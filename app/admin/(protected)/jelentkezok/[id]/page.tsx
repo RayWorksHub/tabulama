@@ -1,10 +1,33 @@
 import Link from 'next/link'
-import { ArrowLeft, CalendarDays, Mail, MapPin, Phone, ReceiptText, UserRound } from 'lucide-react'
+import {
+  ArrowLeft,
+  Banknote,
+  CalendarDays,
+  CheckCircle2,
+  CircleAlert,
+  Mail,
+  MapPin,
+  Phone,
+  ReceiptText,
+  UserRound,
+} from 'lucide-react'
 import { notFound } from 'next/navigation'
 import { getApplicationById } from '@/lib/application-repository'
-import { applicationStatusLabel, formatAdminDate } from '@/lib/admin-display'
+import {
+  APPLICATION_STATUSES,
+  applicationStatusLabel,
+  applicationStatusLabels,
+  formatAdminDate,
+  formatAdminDay,
+  paymentMethodLabels,
+  paymentStatusLabel,
+} from '@/lib/admin-display'
 import { formatHUF, packages } from '@/lib/tabulama-config'
 import { StatusBadge } from '@/components/admin/status-badge'
+import {
+  recordApplicationPaymentAction,
+  updateApplicationStatusAction,
+} from './actions'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,13 +40,58 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
   )
 }
 
-export default async function ApplicationDetailsPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params
+const successMessages: Record<string, string> = {
+  status_updated: 'A jelentkezés státusza frissült.',
+  payment_recorded: 'A befizetés rögzítve, az egyenleg és a státuszok frissültek.',
+}
+
+const errorMessages: Record<string, string> = {
+  invalid_form: 'Ellenőrizd a megadott adatokat.',
+  not_found: 'A jelentkezés nem található.',
+  payment_plan_missing: 'Ehhez a részlethez nem található fizetési terv.',
+  overpayment: 'Az összeg nagyobb a részlet fennmaradó egyenlegénél.',
+  inactive_application: 'Elutasított vagy lemondott jelentkezéshez nem rögzíthető befizetés.',
+  no_change: 'Válassz másik státuszt, vagy adj meg megjegyzést.',
+  save_failed: 'A módosítás most nem menthető. Próbáld újra.',
+}
+
+function paymentBadgeClasses(status: string): string {
+  const variants: Record<string, string> = {
+    pending: 'bg-slate-100 text-slate-700 ring-slate-200',
+    partially_paid: 'bg-orange-50 text-orange-800 ring-orange-200',
+    paid: 'bg-emerald-50 text-emerald-800 ring-emerald-200',
+    overdue: 'bg-red-50 text-red-800 ring-red-200',
+    cancelled: 'bg-slate-100 text-slate-500 ring-slate-200',
+  }
+  return variants[status] ?? variants.pending
+}
+
+function todayInBudapest(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    timeZone: 'Europe/Budapest',
+  }).format(new Date())
+}
+
+export default async function ApplicationDetailsPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>
+  searchParams: Promise<{ success?: string; error?: string }>
+}) {
+  const [{ id }, feedback] = await Promise.all([params, searchParams])
   const application = await getApplicationById(id)
   if (!application) notFound()
 
   const data = application.submittedData
   const selectedPackage = packages[application.packageKey]
+  const successMessage = feedback.success ? successMessages[feedback.success] : null
+  const errorMessage = feedback.error ? errorMessages[feedback.error] : null
+  const paymentDate = todayInBudapest()
+  const paymentRecordingAllowed = !['rejected', 'cancelled'].includes(application.status)
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -43,6 +111,19 @@ export default async function ApplicationDetailsPage({ params }: { params: Promi
         </div>
       </div>
 
+      {successMessage ? (
+        <div className="mt-5 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900" role="status">
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{successMessage}</span>
+        </div>
+      ) : null}
+      {errorMessage ? (
+        <div className="mt-5 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-900" role="alert">
+          <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{errorMessage}</span>
+        </div>
+      ) : null}
+
       <div className="mt-8 grid gap-6 lg:grid-cols-[1.5fr_1fr]">
         <div className="space-y-6">
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
@@ -57,6 +138,129 @@ export default async function ApplicationDetailsPage({ params }: { params: Promi
               <DetailRow label="Tapasztalat" value={data.experience} />
               <DetailRow label="Iskola" value={data.schoolName} />
             </dl>
+          </section>
+
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="flex items-center gap-2 text-lg font-bold">
+                <Banknote className="h-5 w-5 text-[#9b6e2f]" /> Pénzügy
+              </h2>
+              {application.payment ? (
+                <span className={`rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${paymentBadgeClasses(application.payment.status)}`}>
+                  {paymentStatusLabel(application.payment.status)}
+                </span>
+              ) : null}
+            </div>
+
+            {application.payment ? (
+              <>
+                <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-xl bg-slate-50 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Fizetendő</p>
+                    <p className="mt-1 text-lg font-bold text-slate-900">{formatHUF(application.payment.totalAmountHuf)}</p>
+                  </div>
+                  <div className="rounded-xl bg-emerald-50 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Befizetve</p>
+                    <p className="mt-1 text-lg font-bold text-emerald-900">{formatHUF(application.payment.paidAmountHuf)}</p>
+                  </div>
+                  <div className="rounded-xl bg-orange-50 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-orange-700">Hátralék</p>
+                    <p className="mt-1 text-lg font-bold text-orange-900">{formatHUF(application.payment.remainingAmountHuf)}</p>
+                  </div>
+                </div>
+
+                <p className="mt-4 text-sm text-slate-600">
+                  Következő esedékesség:{' '}
+                  <strong className="text-slate-900">
+                    {application.payment.remainingAmountHuf === 0
+                      ? 'nincs hátralék'
+                      : application.payment.nextDueAt
+                        ? formatAdminDay(application.payment.nextDueAt)
+                        : 'nincs rögzítve'}
+                  </strong>
+                </p>
+
+                <div className="mt-5 space-y-4">
+                  {application.payment.items.map((item) => (
+                    <article key={item.id} className="rounded-xl border border-slate-200 p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <h3 className="font-bold">
+                            {application.payment!.installmentCount === 1 ? 'Egyösszegű díj' : `${item.position}. részlet`}
+                          </h3>
+                          <p className="mt-1 text-sm text-slate-500">
+                            {formatHUF(item.amountHuf)}
+                            {' · '}
+                            {item.dueAt ? `Határidő: ${formatAdminDay(item.dueAt)}` : 'Határidő nincs rögzítve'}
+                          </p>
+                        </div>
+                        <span className={`rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${paymentBadgeClasses(item.status)}`}>
+                          {paymentStatusLabel(item.status)}
+                        </span>
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-sm">
+                        <span className="text-slate-600">Befizetve: <strong className="text-slate-900">{formatHUF(item.paidAmountHuf)}</strong></span>
+                        <span className="text-slate-600">Hátralék: <strong className="text-slate-900">{formatHUF(item.remainingAmountHuf)}</strong></span>
+                      </div>
+
+                      {item.payments.length > 0 ? (
+                        <ul className="mt-4 space-y-2 border-t border-slate-100 pt-4">
+                          {item.payments.map((payment) => (
+                            <li key={payment.id} className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                              <div className="flex flex-wrap justify-between gap-2">
+                                <strong className="text-slate-900">{formatHUF(payment.amountHuf)}</strong>
+                                <span>{formatAdminDay(payment.paidAt)} · {paymentMethodLabels[payment.paymentMethod]}</span>
+                              </div>
+                              {payment.note ? <p className="mt-1 text-slate-500">{payment.note}</p> : null}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+
+                      {item.remainingAmountHuf > 0 && paymentRecordingAllowed ? (
+                        <form action={recordApplicationPaymentAction} className="mt-4 grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-2">
+                          <input type="hidden" name="applicationId" value={application.id} />
+                          <input type="hidden" name="paymentItemId" value={item.id} />
+                          <label className="grid gap-1 text-sm font-semibold text-slate-700">
+                            Összeg (Ft)
+                            <input required type="number" name="amountHuf" min="1" max={item.remainingAmountHuf} step="1" defaultValue={item.remainingAmountHuf} className="rounded-lg border border-slate-300 px-3 py-2.5 font-normal text-slate-950 outline-none focus:border-[#9b6e2f] focus:ring-2 focus:ring-[#9b6e2f]/20" />
+                          </label>
+                          <label className="grid gap-1 text-sm font-semibold text-slate-700">
+                            Befizetés dátuma
+                            <input required type="date" name="paidAt" defaultValue={paymentDate} className="rounded-lg border border-slate-300 px-3 py-2.5 font-normal text-slate-950 outline-none focus:border-[#9b6e2f] focus:ring-2 focus:ring-[#9b6e2f]/20" />
+                          </label>
+                          <label className="grid gap-1 text-sm font-semibold text-slate-700 sm:col-span-2">
+                            Fizetési mód
+                            <select required name="paymentMethod" defaultValue="bank_transfer" className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-normal text-slate-950 outline-none focus:border-[#9b6e2f] focus:ring-2 focus:ring-[#9b6e2f]/20">
+                              <option value="bank_transfer">Banki átutalás</option>
+                              <option value="cash">Készpénz</option>
+                            </select>
+                          </label>
+                          <label className="grid gap-1 text-sm font-semibold text-slate-700 sm:col-span-2">
+                            Megjegyzés
+                            <textarea name="note" rows={2} maxLength={500} placeholder="Opcionális belső megjegyzés" className="resize-y rounded-lg border border-slate-300 px-3 py-2.5 font-normal text-slate-950 outline-none focus:border-[#9b6e2f] focus:ring-2 focus:ring-[#9b6e2f]/20" />
+                          </label>
+                          <button type="submit" className="inline-flex justify-center rounded-lg bg-[#1b2430] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#2b3747] sm:col-span-2">
+                            Befizetés rögzítése
+                          </button>
+                        </form>
+                      ) : null}
+                    </article>
+                  ))}
+                </div>
+
+                {!paymentRecordingAllowed ? (
+                  <p className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    A jelentkezés jelenlegi státuszában nem rögzíthető új befizetés.
+                  </p>
+                ) : null}
+              </>
+            ) : (
+              <p className="mt-4 rounded-lg bg-amber-50 px-3 py-3 text-sm text-amber-900">
+                A fizetési terv még nincs létrehozva ehhez a jelentkezéshez.
+              </p>
+            )}
           </section>
 
           {application.guardianName ? (
@@ -100,6 +304,25 @@ export default async function ApplicationDetailsPage({ params }: { params: Promi
               <DetailRow label="Teljes összeg" value={formatHUF(application.totalAmountHuf)} />
               <DetailRow label="Státusz" value={applicationStatusLabel(application.status)} />
             </dl>
+
+            <form action={updateApplicationStatusAction} className="mt-5 space-y-3 border-t border-slate-100 pt-5">
+              <input type="hidden" name="applicationId" value={application.id} />
+              <label className="grid gap-1 text-sm font-semibold text-slate-700">
+                Új státusz
+                <select name="status" defaultValue={application.status} className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-normal text-slate-950 outline-none focus:border-[#9b6e2f] focus:ring-2 focus:ring-[#9b6e2f]/20">
+                  {APPLICATION_STATUSES.map((status) => (
+                    <option key={status} value={status}>{applicationStatusLabels[status]}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="grid gap-1 text-sm font-semibold text-slate-700">
+                Megjegyzés
+                <textarea name="note" rows={2} maxLength={500} placeholder="Opcionális belső megjegyzés" className="resize-y rounded-lg border border-slate-300 px-3 py-2.5 font-normal text-slate-950 outline-none focus:border-[#9b6e2f] focus:ring-2 focus:ring-[#9b6e2f]/20" />
+              </label>
+              <button type="submit" className="w-full rounded-lg bg-[#1b2430] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#2b3747]">
+                Státusz mentése
+              </button>
+            </form>
           </section>
 
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
