@@ -16,6 +16,7 @@ const poppins = Poppins({
 })
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://tabulama.com'),
   title: {
     default: 'TabuLama Programozó Akadémia',
     template: '%s | TabuLama',
@@ -32,6 +33,20 @@ export const metadata: Metadata = {
     title: 'TabuLama Programozó Akadémia',
     description:
       'Python programozás középiskolásoknak, gyakorlati tudással és célzott vizsgafelkészítéssel.',
+    images: [
+      {
+        url: '/og.png',
+        width: 1200,
+        height: 630,
+        alt: 'TabuLama Programozó Akadémia – Python programozás középiskolásoknak',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'TabuLama Programozó Akadémia',
+    description: 'Python programozás középiskolásoknak.',
+    images: ['/og.png'],
   },
 }
 
