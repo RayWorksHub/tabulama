@@ -1,0 +1,13 @@
+# Environment variables
+.env*.local
+
+# Dependencies and build output
+node_modules/
+.next/
+
+# Local tooling
+.vercel/
+.sites-runtime/
+.corepack/
+.npm-cache/
+.DS_Store
