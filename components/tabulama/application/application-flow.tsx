@@ -74,6 +74,11 @@ interface FormState {
   declPaymentTerms: boolean
   declTruthful: boolean
   declGuardianAuth: boolean
+  source: string
+  referrer: string
+  utmSource: string
+  utmMedium: string
+  utmCampaign: string
   website: string
 }
 
@@ -106,6 +111,11 @@ const emptyState: FormState = {
   declPaymentTerms: false,
   declTruthful: false,
   declGuardianAuth: false,
+  source: '',
+  referrer: '',
+  utmSource: '',
+  utmMedium: '',
+  utmCampaign: '',
   website: '',
 }
 
@@ -202,6 +212,18 @@ export function ApplicationFlow({ initialPackageKey, earlyBirdExpiredFromUrl }: 
       return prev
     })
   }, [isMinor])
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    setState((prev) => ({
+      ...prev,
+      source: prev.source || params.get('source') || 'website',
+      referrer: prev.referrer || document.referrer.slice(0, 500),
+      utmSource: prev.utmSource || params.get('utm_source') || '',
+      utmMedium: prev.utmMedium || params.get('utm_medium') || '',
+      utmCampaign: prev.utmCampaign || params.get('utm_campaign') || '',
+    }))
+  }, [])
 
   // Lépésváltáskor a címsor kapjon fókuszt (akadálymentesség).
   useEffect(() => {

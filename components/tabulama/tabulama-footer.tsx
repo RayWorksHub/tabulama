@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Mail, Clock, Users } from 'lucide-react'
 import { TabuLamaLogo } from '@/components/tabulama/tabulama-logo'
+import { provider } from '@/lib/tabulama-config'
 
 const navItems = [
   { href: '/', label: 'Főoldal' },
@@ -55,10 +56,10 @@ export function TabuLamaFooter() {
               <li className="flex items-center gap-2">
                 <Mail className="h-4 w-4 shrink-0 text-primary" />
                 <a
-                  href="mailto:info@tabulama.hu"
+                  href={`mailto:${provider.email}`}
                   className="transition-colors hover:text-primary"
                 >
-                  info@tabulama.hu
+                  {provider.email}
                 </a>
               </li>
             </ul>

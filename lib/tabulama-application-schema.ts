@@ -161,8 +161,15 @@ export function buildApplicationSchema(now: Date = new Date()) {
       declTruthful: z.boolean(),
       declGuardianAuth: z.boolean().optional(),
 
+      // Konverziómérés – kizárólag technikai forrásadatok.
+      source: optionalTrimmed,
+      referrer: z.string().trim().max(500).optional().transform((v) => (v ? v : undefined)),
+      utmSource: optionalTrimmed,
+      utmMedium: optionalTrimmed,
+      utmCampaign: optionalTrimmed,
+
       // Honeypot – üresen kell maradnia
-      website: z.string().max(0).optional().or(z.literal('')),
+      website: z.string().max(200).optional(),
     })
     .superRefine((data, ctx) => {
       // Csomag e-mail formátumok

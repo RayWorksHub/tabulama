@@ -226,7 +226,7 @@ export async function sendInternalNotification(
 
   if (!transporter || !recipient) {
     console.log(
-      `[v0] TabuLama: belső értesítő kihagyva (SMTP nincs konfigurálva). Azonosító: ${meta.applicationId}, csomag: ${data.packageKey}`,
+      `[TabuLama] Belső értesítő kihagyva (SMTP nincs konfigurálva). Azonosító: ${meta.applicationId}, csomag: ${data.packageKey}`,
     )
     return { status: 'skipped', detail: 'E-mail kézbesítés nincs konfigurálva.' }
   }
@@ -245,7 +245,7 @@ export async function sendInternalNotification(
     })
     return { status: 'sent', detail: 'A belső értesítő elküldve.' }
   } catch {
-    console.log(`[v0] TabuLama: belső e-mail kivétel (azonosító: ${meta.applicationId})`)
+    console.log(`[TabuLama] Belső e-mail kivétel (azonosító: ${meta.applicationId})`)
     return { status: 'error', detail: 'A belső értesítő kézbesítése nem sikerült.' }
   }
 }
@@ -314,7 +314,7 @@ export async function sendApplicantConfirmation(
     await transporter.sendMail({ from: FROM(), to, replyTo: provider.email ?? undefined, subject, text, html })
     return { status: 'sent', detail: 'A visszaigazoló e-mail elküldve.' }
   } catch {
-    console.log(`[v0] TabuLama: visszaigazolás kivétel (azonosító: ${meta.applicationId})`)
+    console.log(`[TabuLama] Visszaigazolás kivétel (azonosító: ${meta.applicationId})`)
     return { status: 'error', detail: 'A visszaigazoló e-mail kézbesítése nem sikerült.' }
   }
 }
