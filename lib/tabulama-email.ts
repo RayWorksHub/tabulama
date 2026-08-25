@@ -24,6 +24,24 @@ export interface ApplicationMeta {
   receivedAt: Date
 }
 
+export type ApplicationWorkflowEmailEvent =
+  | 'accepted'
+  | 'awaiting_payment'
+  | 'payment_recorded'
+  | 'enrolled'
+
+export interface ApplicationWorkflowEmailInput {
+  applicationId: string
+  participantName: string
+  recipient: string
+  courseTitle: string
+  totalAmountHuf: number
+  paidAmountHuf: number
+  remainingAmountHuf: number
+  nextDueAt: string | null
+  isTest: boolean
+}
+
 const payerLabels: Record<string, string> = {
   participant: 'A résztvevő (nagykorú)',
   guardian: 'Törvényes képviselő',
@@ -316,5 +334,80 @@ export async function sendApplicantConfirmation(
   } catch {
     console.log(`[TabuLama] Visszaigazolás kivétel (azonosító: ${meta.applicationId})`)
     return { status: 'error', detail: 'A visszaigazoló e-mail kézbesítése nem sikerült.' }
+  }
+}
+
+export async function sendApplicationWorkflowEmail(
+  event: ApplicationWorkflowEmailEvent,
+  application: ApplicationWorkflowEmailInput,
+): Promise<EmailResult> {
+  const transporter = createTransporter()
+  if (!transporter || !application.recipient) {
+    return { status: 'skipped', detail: 'Folyamatértesítés nincs konfigurálva vagy nincs cím.' }
+  }
+
+  const eventContent: Record<ApplicationWorkflowEmailEvent, { subject: string; message: string }> = {
+    accepted: {
+      subject: 'Elfogadtuk a TabuLama-jelentkezésed',
+      message: 'A jelentkezésedet elfogadtuk. A fizetési információkról külön értesítést küldünk.',
+    },
+    awaiting_payment: {
+      subject: 'A TabuLama-jelentkezés fizetésre vár',
+      message: `A fizetésre váró összeg ${formatHUF(application.remainingAmountHuf)}.${
+        application.nextDueAt ? ` A következő határidő: ${formatHuDate(application.nextDueAt)}.` : ''
+      }`,
+    },
+    payment_recorded: {
+      subject: 'Rögzítettük a TabuLama-befizetést',
+      message: `Eddig ${formatHUF(application.paidAmountHuf)} befizetést rögzítettünk, a fennmaradó összeg ${formatHUF(application.remainingAmountHuf)}.`,
+    },
+    enrolled: {
+      subject: 'Elkészült a TabuLama-beiratkozás',
+      message: 'A beiratkozás elkészült. Hamarosan küldjük a kurzus indulásához szükséges további tudnivalókat.',
+    },
+  }
+  const content = eventContent[event]
+  const testPrefix = application.isTest ? '[TESZT] ' : ''
+  const subject = `${testPrefix}${content.subject}`
+  const testNotice = application.isTest
+    ? 'TESZT folyamatértesítés – nem éles jelentkezés.'
+    : null
+  const text = [
+    `Kedves ${application.participantName}!`,
+    '',
+    testNotice,
+    content.message,
+    '',
+    `Jelentkezési azonosító: ${application.applicationId}`,
+    `Kurzus: ${application.courseTitle}`,
+    `Teljes díj: ${formatHUF(application.totalAmountHuf)}`,
+    '',
+    `Üdvözlettel:`,
+    provider.brandName,
+  ].filter((line): line is string => line !== null).join('\n')
+  const html = renderShell(
+    subject,
+    `${testNotice ? `<p style="padding:10px 12px;background:#fdf2f8;color:#9d174d;font-weight:700;border-radius:8px;">${escapeHtml(testNotice)}</p>` : ''}
+     <p>Kedves ${escapeHtml(application.participantName)}!</p>
+     <p>${escapeHtml(content.message)}</p>
+     <p><strong>Jelentkezési azonosító:</strong> ${escapeHtml(application.applicationId)}<br>
+        <strong>Kurzus:</strong> ${escapeHtml(application.courseTitle)}<br>
+        <strong>Teljes díj:</strong> ${escapeHtml(formatHUF(application.totalAmountHuf))}</p>
+     <p>Üdvözlettel:<br>${escapeHtml(provider.brandName)}</p>`,
+  )
+
+  try {
+    await transporter.sendMail({
+      from: FROM(),
+      to: application.recipient,
+      replyTo: provider.email ?? undefined,
+      subject,
+      text,
+      html,
+    })
+    return { status: 'sent', detail: 'A folyamatértesítő e-mail elküldve.' }
+  } catch {
+    console.log(`[TabuLama] Folyamatértesítő kivétel (${application.applicationId}, ${event})`)
+    return { status: 'error', detail: 'A folyamatértesítő kézbesítése nem sikerült.' }
   }
 }

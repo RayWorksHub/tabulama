@@ -27,6 +27,7 @@ import { StatusBadge } from '@/components/admin/status-badge'
 import {
   recordApplicationPaymentAction,
   updateApplicationStatusAction,
+  updatePaymentItemDueDateAction,
 } from './actions'
 
 export const dynamic = 'force-dynamic'
@@ -43,6 +44,8 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
 const successMessages: Record<string, string> = {
   status_updated: 'A jelentkezés státusza frissült.',
   payment_recorded: 'A befizetés rögzítve, az egyenleg és a státuszok frissültek.',
+  due_date_updated: 'A fizetési határidő és az érintett státuszok frissültek.',
+  test_created: 'A 10 Ft-os TESZT jelentkezés elkészült.',
 }
 
 const errorMessages: Record<string, string> = {
@@ -115,6 +118,11 @@ export default async function ApplicationDetailsPage({
         <div className="mt-5 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900" role="status">
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
           <span>{successMessage}</span>
+        </div>
+      ) : null}
+      {application.isTest ? (
+        <div className="mt-5 rounded-xl border border-fuchsia-300 bg-fuchsia-50 px-4 py-3 text-sm font-bold text-fuchsia-900" role="note">
+          TESZT jelentkezés · 10 Ft · Billingo-bizonylat készítése adatbázis-szinten blokkolva
         </div>
       ) : null}
       {errorMessage ? (
@@ -203,6 +211,18 @@ export default async function ApplicationDetailsPage({
                         <span className="text-slate-600">Befizetve: <strong className="text-slate-900">{formatHUF(item.paidAmountHuf)}</strong></span>
                         <span className="text-slate-600">Hátralék: <strong className="text-slate-900">{formatHUF(item.remainingAmountHuf)}</strong></span>
                       </div>
+
+                      <form action={updatePaymentItemDueDateAction} className="mt-4 flex flex-wrap items-end gap-3 border-t border-slate-100 pt-4">
+                        <input type="hidden" name="applicationId" value={application.id} />
+                        <input type="hidden" name="paymentItemId" value={item.id} />
+                        <label className="grid min-w-52 flex-1 gap-1 text-sm font-semibold text-slate-700">
+                          Részlet határideje
+                          <input type="date" name="dueAt" defaultValue={item.dueAt?.slice(0, 10) ?? ''} className="rounded-lg border border-slate-300 px-3 py-2.5 font-normal text-slate-950 outline-none focus:border-[#9b6e2f] focus:ring-2 focus:ring-[#9b6e2f]/20" />
+                        </label>
+                        <button type="submit" className="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 transition hover:bg-slate-50">
+                          Határidő mentése
+                        </button>
+                      </form>
 
                       {item.payments.length > 0 ? (
                         <ul className="mt-4 space-y-2 border-t border-slate-100 pt-4">

@@ -2,10 +2,16 @@ import 'server-only'
 
 import { createHash, randomUUID } from 'node:crypto'
 import { getSql } from '@/lib/database'
-import { packages } from '@/lib/tabulama-config'
-import type { ApplicationData } from '@/lib/tabulama-application-schema'
+import { packages, provider } from '@/lib/tabulama-config'
+import { buildApplicationSchema, type ApplicationData } from '@/lib/tabulama-application-schema'
 import type { ApplicationMeta } from '@/lib/tabulama-email'
 import type { ApplicationStatus, PaymentMethod } from '@/lib/admin-display'
+import {
+  canRecordPayment,
+  nextPaymentDueAt,
+  paymentItemState,
+  paymentPlanState,
+} from '@/lib/payment-calculations'
 
 const DEFAULT_COURSE_ID = 'course-python-2026'
 
@@ -183,8 +189,10 @@ interface PaymentTargetRow {
   plan_total_amount_huf: number
   plan_status: string
   application_status: ApplicationStatus
+  item_due_at: string | null
   item_paid_amount_huf: number
   plan_paid_amount_huf: number
+  other_overdue: boolean
 }
 
 interface PaymentScheduleItem {
@@ -337,6 +345,105 @@ export async function saveApplication(
   ])
 }
 
+export async function createTestApplication(): Promise<string> {
+  const sql = getSql()
+  const now = new Date()
+  const createdAt = now.toISOString()
+  const datePart = new Intl.DateTimeFormat('en-CA', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    timeZone: 'Europe/Budapest',
+  }).format(now).replace(/-/g, '')
+  const applicationId = `TEST-${datePart}-${randomUUID().slice(0, 8).toUpperCase()}`
+  const paymentPlanId = randomUUID()
+  const paymentItemId = randomUUID()
+  const testData = buildApplicationSchema(now).parse({
+    packageKey: 'standard',
+    applicantType: 'self',
+    participantName: 'TESZT Jelentkező',
+    participantBirthDate: '2000-01-01',
+    participantEmail: provider.email,
+    participantPhone: '+36 30 000 0000',
+    grade: 'Egyéb / már nem vagyok középiskolás',
+    goal: 'Még nem tudom, segítséget kérek a választáshoz',
+    experience: 'Még nem programoztam',
+    schoolName: 'TESZT',
+    message: 'Adminisztrátori 10 Ft-os tesztjelentkezés.',
+    payerType: 'participant',
+    billingName: 'TESZT Jelentkező',
+    billingZip: '0000',
+    billingCity: 'Tesztváros',
+    billingAddress: 'Teszt utca 10.',
+    billingEmail: provider.email,
+    declPrivacy: true,
+    declNotAutomatic: true,
+    declPaymentTerms: true,
+    declTruthful: true,
+    source: 'admin-test',
+  })
+
+  await sql.transaction([
+    sql.query(
+      `INSERT INTO applications (
+         id, course_id, participant_name, participant_birth_date,
+         participant_email, participant_phone, billing_name, billing_email,
+         billing_address, package_key, payment_type, total_amount_huf,
+         status, is_test, source, submitted_data, created_at, updated_at
+       ) VALUES (
+         $1, $2, $3, $4::date, $5, $6, $7, $8, $9, 'standard',
+         'lump-sum', 10, 'new', true, 'admin-test', $10::jsonb,
+         $11::timestamptz, $11::timestamptz
+       )`,
+      [
+        applicationId,
+        DEFAULT_COURSE_ID,
+        testData.participantName,
+        testData.participantBirthDate,
+        testData.participantEmail,
+        testData.participantPhone,
+        testData.billingName,
+        testData.billingEmail,
+        `${testData.billingZip} ${testData.billingCity}, ${testData.billingAddress}`,
+        JSON.stringify(testData),
+        createdAt,
+      ],
+    ),
+    sql.query(
+      `INSERT INTO payment_plans (
+         id, application_id, total_amount_huf, installment_count, status, created_at, updated_at
+       ) VALUES ($1, $2, 10, 1, 'pending', $3::timestamptz, $3::timestamptz)`,
+      [paymentPlanId, applicationId, createdAt],
+    ),
+    sql.query(
+      `INSERT INTO payment_items (
+         id, payment_plan_id, position, amount_huf, due_at, status, created_at, updated_at
+       ) VALUES ($1, $2, 1, 10, NULL, 'pending', $3::timestamptz, $3::timestamptz)`,
+      [paymentItemId, paymentPlanId, createdAt],
+    ),
+    sql.query(
+      `INSERT INTO status_history (
+         id, entity_type, entity_id, from_status, to_status, note, created_at
+       ) VALUES ($1, 'application', $2, NULL, 'new', '10 Ft-os TESZT jelentkezés létrehozva adminból.', $3::timestamptz)`,
+      [randomUUID(), applicationId, createdAt],
+    ),
+    sql.query(
+      `INSERT INTO status_history (
+         id, entity_type, entity_id, from_status, to_status, note, created_at
+       ) VALUES ($1, 'payment_plan', $2, NULL, 'pending', 'TESZT fizetési terv létrehozva.', $3::timestamptz)`,
+      [randomUUID(), paymentPlanId, createdAt],
+    ),
+    sql.query(
+      `INSERT INTO status_history (
+         id, entity_type, entity_id, from_status, to_status, note, created_at
+       ) VALUES ($1, 'payment_item', $2, NULL, 'pending', '10 Ft-os TESZT fizetési tétel létrehozva.', $3::timestamptz)`,
+      [randomUUID(), paymentItemId, createdAt],
+    ),
+  ])
+
+  return applicationId
+}
+
 export async function listApplications(limit = 100): Promise<ApplicationListItem[]> {
   const sql = getSql()
   const rows = (await sql.query(
@@ -438,6 +545,7 @@ export async function getApplicationById(id: string): Promise<ApplicationDetails
     recordsByItem.set(record.paymentItemId, itemRecords)
   }
 
+  const now = new Date()
   const items = (paymentItemRows as PaymentItemRow[]).map((item) => {
     const itemRecords = recordsByItem.get(item.id) ?? []
     const paidAmountHuf = itemRecords.reduce((sum, payment) => sum + payment.amountHuf, 0)
@@ -450,7 +558,13 @@ export async function getApplicationById(id: string): Promise<ApplicationDetails
       paidAmountHuf,
       remainingAmountHuf: Math.max(amountHuf - paidAmountHuf, 0),
       dueAt: item.due_at,
-      status: item.status,
+      status: paymentItemState({
+        amountHuf,
+        paidAmountHuf,
+        dueAt: item.due_at,
+        currentStatus: item.status,
+        now,
+      }),
       paidAt: item.paid_at,
       paymentMethod: item.payment_method,
       payments: itemRecords,
@@ -464,9 +578,14 @@ export async function getApplicationById(id: string): Promise<ApplicationDetails
         totalAmountHuf: Number(paymentPlan.total_amount_huf),
         paidAmountHuf,
         remainingAmountHuf: Math.max(Number(paymentPlan.total_amount_huf) - paidAmountHuf, 0),
-        nextDueAt: items.find((item) => item.remainingAmountHuf > 0 && item.dueAt)?.dueAt ?? null,
+        nextDueAt: nextPaymentDueAt(items),
         installmentCount: Number(paymentPlan.installment_count),
-        status: paymentPlan.status,
+        status: paymentPlanState({
+          totalAmountHuf: Number(paymentPlan.total_amount_huf),
+          paidAmountHuf,
+          itemStatuses: items.map((item) => item.status),
+          currentStatus: paymentPlan.status,
+        }),
         items,
       }
     : null
@@ -499,7 +618,7 @@ export async function updateApplicationStatus(
   id: string,
   status: ApplicationStatus,
   note: string | null,
-): Promise<void> {
+): Promise<boolean> {
   const sql = getSql()
   const rows = (await sql.query(
     `SELECT status FROM applications WHERE id = $1 LIMIT 1`,
@@ -533,6 +652,106 @@ export async function updateApplicationStatus(
       ],
     ),
   ])
+  return current.status !== status
+}
+
+export async function updatePaymentItemDueDate(input: {
+  applicationId: string
+  paymentItemId: string
+  dueAt: string | null
+}): Promise<void> {
+  const sql = getSql()
+  const rows = (await sql.query(
+    `SELECT
+       pi.id AS item_id,
+       pi.amount_huf AS item_amount_huf,
+       pi.status AS item_status,
+       pi.due_at AS item_due_at,
+       pp.id AS plan_id,
+       pp.total_amount_huf AS plan_total_amount_huf,
+       pp.status AS plan_status,
+       a.status AS application_status,
+       coalesce((SELECT sum(p.amount_huf) FROM payments p WHERE p.payment_item_id = pi.id), 0)::int AS item_paid_amount_huf,
+       coalesce((
+         SELECT sum(p.amount_huf)
+         FROM payments p
+         JOIN payment_items paid_item ON paid_item.id = p.payment_item_id
+         WHERE paid_item.payment_plan_id = pp.id
+       ), 0)::int AS plan_paid_amount_huf,
+       EXISTS (
+         SELECT 1
+         FROM payment_items other_item
+         WHERE other_item.payment_plan_id = pp.id
+           AND other_item.id <> pi.id
+           AND other_item.due_at < now()
+           AND other_item.status <> 'cancelled'
+           AND coalesce((SELECT sum(p.amount_huf) FROM payments p WHERE p.payment_item_id = other_item.id), 0) < other_item.amount_huf
+       ) AS other_overdue
+     FROM payment_items pi
+     JOIN payment_plans pp ON pp.id = pi.payment_plan_id
+     JOIN applications a ON a.id = pp.application_id
+     WHERE a.id = $1 AND pi.id = $2
+     LIMIT 1`,
+    [input.applicationId, input.paymentItemId],
+  )) as PaymentTargetRow[]
+
+  const target = rows[0]
+  if (!target) throw new ApplicationMutationError('payment_plan_missing')
+
+  const previousDay = target.item_due_at?.slice(0, 10) ?? null
+  const nextDay = input.dueAt?.slice(0, 10) ?? null
+  if (previousDay === nextDay) throw new ApplicationMutationError('no_change')
+
+  const changedAt = new Date().toISOString()
+  const itemStatus = paymentItemState({
+    amountHuf: Number(target.item_amount_huf),
+    paidAmountHuf: Number(target.item_paid_amount_huf),
+    dueAt: input.dueAt,
+    currentStatus: target.item_status,
+    now: new Date(changedAt),
+  })
+  const planStatus = paymentPlanState({
+    totalAmountHuf: Number(target.plan_total_amount_huf),
+    paidAmountHuf: Number(target.plan_paid_amount_huf),
+    itemStatuses: [itemStatus, ...(target.other_overdue ? ['overdue'] : [])],
+    currentStatus: target.plan_status,
+  })
+  const historyNote = `Fizetési határidő módosítva: ${previousDay ?? 'nincs'} → ${nextDay ?? 'nincs'}.`
+  const queries = [
+    sql.query(
+      `UPDATE payment_items
+       SET due_at = $2::timestamptz, status = $3, updated_at = $4::timestamptz
+       WHERE id = $1`,
+      [target.item_id, input.dueAt, itemStatus, changedAt],
+    ),
+    sql.query(
+      `UPDATE payment_plans SET status = $2, updated_at = $3::timestamptz WHERE id = $1`,
+      [target.plan_id, planStatus, changedAt],
+    ),
+    sql.query(
+      `INSERT INTO status_history (
+         id, entity_type, entity_id, from_status, to_status, note, created_at
+       ) VALUES ($1, 'payment_item', $2, $3, $4, $5, $6::timestamptz)`,
+      [randomUUID(), target.item_id, target.item_status, itemStatus, historyNote, changedAt],
+    ),
+    sql.query(
+      `INSERT INTO status_history (
+         id, entity_type, entity_id, from_status, to_status, note, created_at
+       ) VALUES ($1, 'application', $2, $3, $3, $4, $5::timestamptz)`,
+      [randomUUID(), input.applicationId, target.application_status, historyNote, changedAt],
+    ),
+  ]
+
+  if (target.plan_status !== planStatus) {
+    queries.push(sql.query(
+      `INSERT INTO status_history (
+         id, entity_type, entity_id, from_status, to_status, note, created_at
+       ) VALUES ($1, 'payment_plan', $2, $3, $4, $5, $6::timestamptz)`,
+      [randomUUID(), target.plan_id, target.plan_status, planStatus, historyNote, changedAt],
+    ))
+  }
+
+  await sql.transaction(queries)
 }
 
 export async function recordApplicationPayment(input: {
@@ -553,6 +772,7 @@ export async function recordApplicationPayment(input: {
        pp.total_amount_huf AS plan_total_amount_huf,
        pp.status AS plan_status,
        a.status AS application_status,
+       pi.due_at AS item_due_at,
        coalesce((
          SELECT sum(p.amount_huf) FROM payments p WHERE p.payment_item_id = pi.id
        ), 0)::int AS item_paid_amount_huf,
@@ -561,7 +781,16 @@ export async function recordApplicationPayment(input: {
          FROM payments p
          JOIN payment_items paid_item ON paid_item.id = p.payment_item_id
          WHERE paid_item.payment_plan_id = pp.id
-       ), 0)::int AS plan_paid_amount_huf
+       ), 0)::int AS plan_paid_amount_huf,
+       EXISTS (
+         SELECT 1
+         FROM payment_items other_item
+         WHERE other_item.payment_plan_id = pp.id
+           AND other_item.id <> pi.id
+           AND other_item.due_at < now()
+           AND other_item.status <> 'cancelled'
+           AND coalesce((SELECT sum(p.amount_huf) FROM payments p WHERE p.payment_item_id = other_item.id), 0) < other_item.amount_huf
+       ) AS other_overdue
      FROM payment_items pi
      JOIN payment_plans pp ON pp.id = pi.payment_plan_id
      JOIN applications a ON a.id = pp.application_id
@@ -572,29 +801,44 @@ export async function recordApplicationPayment(input: {
 
   const target = rows[0]
   if (!target) throw new ApplicationMutationError('payment_plan_missing')
-  if (target.application_status === 'rejected' || target.application_status === 'cancelled') {
+  if (
+    target.application_status === 'rejected' ||
+    target.application_status === 'cancelled' ||
+    target.plan_status === 'cancelled'
+  ) {
     throw new ApplicationMutationError('inactive_application')
   }
 
   const itemAmountHuf = Number(target.item_amount_huf)
   const itemPaidBefore = Number(target.item_paid_amount_huf)
   const itemPaidAfter = itemPaidBefore + input.amountHuf
-  if (input.amountHuf <= 0 || itemPaidAfter > itemAmountHuf) {
+  if (!canRecordPayment(input.amountHuf, itemAmountHuf - itemPaidBefore)) {
     throw new ApplicationMutationError('overpayment')
   }
 
   const planTotalAmountHuf = Number(target.plan_total_amount_huf)
   const planPaidAfter = Number(target.plan_paid_amount_huf) + input.amountHuf
-  const itemStatus = itemPaidAfter >= itemAmountHuf ? 'paid' : 'partially_paid'
-  const planStatus = planPaidAfter >= planTotalAmountHuf ? 'paid' : 'partially_paid'
+  const changedAt = new Date().toISOString()
+  const itemStatus = paymentItemState({
+    amountHuf: itemAmountHuf,
+    paidAmountHuf: itemPaidAfter,
+    dueAt: target.item_due_at,
+    currentStatus: target.item_status,
+    now: new Date(changedAt),
+  })
+  const planStatus = paymentPlanState({
+    totalAmountHuf: planTotalAmountHuf,
+    paidAmountHuf: planPaidAfter,
+    itemStatuses: [itemStatus, ...(target.other_overdue ? ['overdue'] : [])],
+    currentStatus: target.plan_status,
+  })
   const protectedApplicationStatuses: ApplicationStatus[] = ['invoiced', 'enrolled']
   const applicationStatus = protectedApplicationStatuses.includes(target.application_status)
     ? target.application_status
-    : planPaidAfter >= planTotalAmountHuf
+    : planStatus === 'paid'
       ? 'paid'
       : 'partially_paid'
   const note = input.note?.trim() || null
-  const changedAt = new Date().toISOString()
   const methodLabel = input.paymentMethod === 'cash' ? 'készpénz' : 'banki átutalás'
   const historyNote = [
     `Befizetés rögzítve: ${input.amountHuf.toLocaleString('hu-HU')} Ft (${methodLabel}).`,
@@ -670,8 +914,7 @@ export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
       `SELECT
          count(*)::int AS applications,
          count(*) FILTER (WHERE status = 'new')::int AS new_applications,
-         count(*) FILTER (WHERE status IN ('proforma', 'awaiting_payment', 'partially_paid'))::int AS awaiting_payment,
-         coalesce(sum(total_amount_huf) FILTER (WHERE status NOT IN ('rejected', 'cancelled')), 0)::int AS total_due
+         count(*) FILTER (WHERE status IN ('proforma', 'awaiting_payment', 'partially_paid'))::int AS awaiting_payment
        FROM applications`,
     ),
     sql.query(
@@ -688,17 +931,29 @@ export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
       `SELECT
          (SELECT count(*)::int
           FROM payment_items pi
-          WHERE pi.due_at < now()
-            AND pi.status NOT IN ('paid', 'cancelled')
-            AND coalesce((SELECT sum(p.amount_huf) FROM payments p WHERE p.payment_item_id = pi.id), 0) < pi.amount_huf
-         ) AS overdue_payments,
-         (SELECT coalesce(sum(p.amount_huf), 0)::int
-          FROM payments p
-          JOIN payment_items pi ON pi.id = p.payment_item_id
           JOIN payment_plans pp ON pp.id = pi.payment_plan_id
           JOIN applications a ON a.id = pp.application_id
-          WHERE a.status NOT IN ('rejected', 'cancelled')
-         ) AS paid_total`,
+          WHERE pi.due_at < now()
+            AND pi.status NOT IN ('paid', 'cancelled')
+            AND a.status NOT IN ('rejected', 'cancelled')
+            AND a.is_test = false
+            AND coalesce((SELECT sum(p.amount_huf) FROM payments p WHERE p.payment_item_id = pi.id), 0) < pi.amount_huf
+         ) AS overdue_payments,
+         coalesce(sum(plan.paid_amount_huf), 0)::int AS paid_total,
+         coalesce(sum(greatest(plan.total_amount_huf - plan.paid_amount_huf, 0)), 0)::int AS outstanding_total
+       FROM (
+         SELECT
+           pp.id,
+           pp.total_amount_huf,
+           coalesce(sum(p.amount_huf), 0)::int AS paid_amount_huf
+         FROM payment_plans pp
+         JOIN applications a ON a.id = pp.application_id
+         LEFT JOIN payment_items pi ON pi.payment_plan_id = pp.id
+         LEFT JOIN payments p ON p.payment_item_id = pi.id
+         WHERE a.status NOT IN ('rejected', 'cancelled')
+           AND a.is_test = false
+         GROUP BY pp.id, pp.total_amount_huf
+       ) AS plan`,
     ),
   ])
 
@@ -706,7 +961,6 @@ export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
   const courses = (courseRows as Array<Record<string, number>>)[0] ?? {}
   const students = (studentRows as Array<Record<string, number>>)[0] ?? {}
   const payments = (paymentRows as Array<Record<string, number>>)[0] ?? {}
-  const totalDue = Number(applications.total_due ?? 0)
   const paidTotal = Number(payments.paid_total ?? 0)
 
   return {
@@ -718,6 +972,6 @@ export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
     awaitingPayment: Number(applications.awaiting_payment ?? 0),
     overduePayments: Number(payments.overdue_payments ?? 0),
     receivedAmountHuf: paidTotal,
-    outstandingAmountHuf: Math.max(totalDue - paidTotal, 0),
+    outstandingAmountHuf: Number(payments.outstanding_total ?? 0),
   }
 }

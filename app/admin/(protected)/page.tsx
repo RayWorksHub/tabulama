@@ -50,10 +50,12 @@ export default async function AdminDashboardPage() {
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <p className="text-sm font-medium text-slate-500">Beérkezett összeg</p>
           <p className="mt-2 text-2xl font-bold text-emerald-700">{formatHUF(stats.receivedAmountHuf)}</p>
+          <p className="mt-1 text-xs text-slate-500">Valódi befizetési rekordokból, TESZT nélkül.</p>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <p className="text-sm font-medium text-slate-500">Nyilvántartott hátralék</p>
           <p className="mt-2 text-2xl font-bold text-orange-700">{formatHUF(stats.outstandingAmountHuf)}</p>
+          <p className="mt-1 text-xs text-slate-500">Fizetési tervekből és befizetésekből, TESZT nélkül.</p>
         </div>
       </section>
 
@@ -75,7 +77,10 @@ export default async function AdminDashboardPage() {
             {applications.map((application) => (
               <Link key={application.id} href={`/admin/jelentkezok/${application.id}`} className="grid gap-2 px-5 py-4 transition hover:bg-slate-50 sm:grid-cols-[1fr_auto_auto] sm:items-center sm:gap-5">
                 <div>
-                  <p className="font-semibold">{application.participantName}</p>
+                  <p className="font-semibold">
+                    {application.participantName}
+                    {application.isTest ? <span className="ml-2 rounded-full bg-fuchsia-100 px-2 py-0.5 text-xs font-bold text-fuchsia-800 ring-1 ring-fuchsia-200">TESZT</span> : null}
+                  </p>
                   <p className="mt-1 text-sm text-slate-500">{application.courseTitle}</p>
                 </div>
                 <StatusBadge status={application.status} />
