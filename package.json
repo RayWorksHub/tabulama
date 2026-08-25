@@ -8,7 +8,10 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "admin:credentials": "node scripts/create-admin-credentials.mjs"
+    "admin:credentials": "node scripts/create-admin-credentials.mjs",
+    "env:check": "node scripts/check-environment.mjs",
+    "db:migrate:check": "node scripts/migrate-database.mjs --check",
+    "db:migrate": "node scripts/migrate-database.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
