@@ -1,11 +1,17 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { buildApplicationSchema } from '@/lib/tabulama-application-schema'
-import { sendInternalNotification, sendApplicantConfirmation } from '@/lib/tabulama-email'
+import {
+  applicantEmailRecipient,
+  sendInternalNotification,
+  sendApplicantConfirmation,
+  type EmailResult,
+} from '@/lib/tabulama-email'
 import { generateApplicationId } from '@/lib/tabulama-config'
 import {
   CourseApplicationError,
   consumeRateLimit,
   hashRequestIp,
+  recordApplicationEmailDelivery,
   saveApplication,
 } from '@/lib/application-repository'
 import { DatabaseNotConfiguredError } from '@/lib/database'
@@ -94,10 +100,23 @@ export async function POST(req: NextRequest) {
   }
 
   // Az adatbázis a mérvadó; az e-mail-küldés külön hibája nem veszít jelentkezést.
-  await Promise.allSettled([
+  const [, confirmationOutcome] = await Promise.allSettled([
     sendInternalNotification(data, meta, pricing),
     sendApplicantConfirmation(data, meta, pricing),
   ])
+  const confirmationResult: EmailResult = confirmationOutcome.status === 'fulfilled'
+    ? confirmationOutcome.value
+    : { status: 'error', detail: 'A visszaigazoló e-mail kézbesítése nem sikerült.' }
+  try {
+    await recordApplicationEmailDelivery({
+      applicationId,
+      event: 'received',
+      recipient: applicantEmailRecipient(data, meta).email ?? null,
+      result: confirmationResult,
+    })
+  } catch {
+    console.error(`[TabuLama] E-mail státusz mentése sikertelen (${applicationId}, received).`)
+  }
 
   return NextResponse.json({ ok: true, applicationId })
 }

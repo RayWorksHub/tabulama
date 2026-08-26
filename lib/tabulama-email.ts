@@ -25,20 +25,28 @@ export interface ApplicationMeta {
 }
 
 export type ApplicationWorkflowEmailEvent =
+  | 'received'
   | 'accepted'
   | 'awaiting_payment'
   | 'payment_recorded'
   | 'enrolled'
+  | 'course_completed'
 
 export interface ApplicationWorkflowEmailInput {
   applicationId: string
   participantName: string
+  recipientName: string
   recipient: string
   courseTitle: string
+  packageName: string
+  paymentType: 'lump-sum' | 'installment'
+  installmentCount: number | null
+  installmentAmountHuf: number | null
   totalAmountHuf: number
   paidAmountHuf: number
   remainingAmountHuf: number
   nextDueAt: string | null
+  receivedAt: string
   isTest: boolean
 }
 
@@ -272,11 +280,19 @@ export async function sendInternalNotification(
   }
 }
 
-/** A jelentkező visszaigazoló e-mail címe: kiskorúnál a képviselőé. */
-function applicantRecipient(data: ApplicationData, meta: ApplicationMeta): string | undefined {
+/** A jelentkező visszaigazoló e-mail címzettje: kiskorúnál a képviselő. */
+export function applicantEmailRecipient(
+  data: ApplicationData,
+  meta: ApplicationMeta,
+): { email: string | undefined; name: string } {
   const ageInfo = computeAgeInfo(data.participantBirthDate, meta.receivedAt)
-  if (ageInfo.isMinor) return data.guardianEmail ?? data.participantEmail ?? data.billingEmail
-  return data.participantEmail ?? data.billingEmail
+  if (ageInfo.isMinor && data.guardianEmail) {
+    return { email: data.guardianEmail, name: data.guardianName ?? data.participantName }
+  }
+  return {
+    email: data.participantEmail ?? data.billingEmail,
+    name: data.participantName,
+  }
 }
 
 /**
@@ -288,55 +304,24 @@ export async function sendApplicantConfirmation(
   meta: ApplicationMeta,
   pricing: ApplicationPricing,
 ): Promise<EmailResult> {
-  const to = applicantRecipient(data, meta)
-  const transporter = createTransporter()
-
-  if (!transporter || !to) {
-    return { status: 'skipped', detail: 'Jelentkezői visszaigazolás nincs konfigurálva vagy nincs cím.' }
-  }
-
-  const subject = 'Megérkezett a TabuLama-jelentkezés'
-
-  const text = [
-    `Kedves Jelentkező!`,
-    ``,
-    `Köszönjük, hogy jelentkeztél a TabuLama Programozó Akadémiára.`,
-    ``,
-    `Jelentkezési azonosító: ${meta.applicationId}`,
-    `Kurzus: ${pricing.courseTitle}`,
-    `Résztvevő: ${data.participantName}`,
-    `Választott csomag: ${pricing.packageName} – ${priceLine(pricing)}.`,
-    ``,
-    `Rajmund hamarosan telefonon keres a megadott számon, hogy átbeszéljétek a részleteket.`,
-    `A jelentkezés még nem jelent automatikus felvételt vagy szerződéskötést, és most még nem kell fizetni – a díjbekérő a telefonos egyeztetés és a szerződés után érkezik.`,
-    ``,
-    `Kérdés esetén írj bátran: ${provider.email}`,
-    ``,
-    `Üdvözlettel:`,
-    `${provider.brandName}`,
-  ].join('\n')
-
-  const html = renderShell(
-    subject,
-    `<p>Kedves Jelentkező!</p>
-     <p>Köszönjük, hogy jelentkeztél a <strong>${escapeHtml(provider.brandName)}</strong> képzésére.</p>
-     <p><strong>Jelentkezési azonosító:</strong> ${escapeHtml(meta.applicationId)}<br>
-        <strong>Kurzus:</strong> ${escapeHtml(pricing.courseTitle)}<br>
-        <strong>Résztvevő:</strong> ${escapeHtml(data.participantName)}<br>
-        <strong>Választott csomag:</strong> ${escapeHtml(pricing.packageName)} – ${escapeHtml(priceLine(pricing))}.</p>
-     <p>Rajmund hamarosan telefonon keres a megadott számon, hogy átbeszéljétek a részleteket.</p>
-     <p>A jelentkezés még nem jelent automatikus felvételt vagy szerződéskötést, és most még nem kell fizetni – a díjbekérő a telefonos egyeztetés és a szerződés után érkezik.</p>
-     <p>Kérdés esetén írj bátran: <a href="mailto:${escapeHtml(provider.email)}">${escapeHtml(provider.email)}</a></p>
-     <p>Üdvözlettel:<br>${escapeHtml(provider.brandName)}</p>`,
-  )
-
-  try {
-    await transporter.sendMail({ from: FROM(), to, replyTo: provider.email ?? undefined, subject, text, html })
-    return { status: 'sent', detail: 'A visszaigazoló e-mail elküldve.' }
-  } catch {
-    console.log(`[TabuLama] Visszaigazolás kivétel (azonosító: ${meta.applicationId})`)
-    return { status: 'error', detail: 'A visszaigazoló e-mail kézbesítése nem sikerült.' }
-  }
+  const recipient = applicantEmailRecipient(data, meta)
+  return sendApplicationWorkflowEmail('received', {
+    applicationId: meta.applicationId,
+    participantName: data.participantName,
+    recipientName: recipient.name,
+    recipient: recipient.email ?? '',
+    courseTitle: pricing.courseTitle,
+    packageName: pricing.packageName,
+    paymentType: pricing.paymentType,
+    installmentCount: pricing.installmentCount,
+    installmentAmountHuf: pricing.installmentAmountHuf,
+    totalAmountHuf: pricing.totalHuf,
+    paidAmountHuf: 0,
+    remainingAmountHuf: pricing.totalHuf,
+    nextDueAt: pricing.paymentDeadline,
+    receivedAt: meta.receivedAt.toISOString(),
+    isTest: false,
+  })
 }
 
 export async function sendApplicationWorkflowEmail(
@@ -348,24 +333,51 @@ export async function sendApplicationWorkflowEmail(
     return { status: 'skipped', detail: 'Folyamatértesítés nincs konfigurálva vagy nincs cím.' }
   }
 
-  const eventContent: Record<ApplicationWorkflowEmailEvent, { subject: string; message: string }> = {
+  const eventContent: Record<ApplicationWorkflowEmailEvent, {
+    subject: string
+    message: string
+    nextStep: string
+    paymentNotice?: string
+  }> = {
+    received: {
+      subject: 'Megérkezett a TabuLama-jelentkezés',
+      message: `Köszönjük, hogy jelentkeztél a ${provider.brandName} képzésére.`,
+      nextStep: 'Rajmund hamarosan telefonon keres a megadott számon, hogy átbeszéljétek a részleteket.',
+      paymentNotice: 'A jelentkezés még nem jelent automatikus felvételt vagy szerződéskötést. Most még nem kell fizetni; fizetési teendő csak az elfogadás, a szerződés és a díjbekérő után lesz.',
+    },
     accepted: {
       subject: 'Elfogadtuk a TabuLama-jelentkezésed',
-      message: 'A jelentkezésedet elfogadtuk. A fizetési információkról külön értesítést küldünk.',
+      message: 'A jelentkezésedet elfogadtuk.',
+      nextStep: 'A fizetési információkról és az esedékességről külön értesítést küldünk.',
+      paymentNotice: 'Addig nincs fizetési teendőd.',
     },
     awaiting_payment: {
       subject: 'A TabuLama-jelentkezés fizetésre vár',
       message: `A fizetésre váró összeg ${formatHUF(application.remainingAmountHuf)}.${
         application.nextDueAt ? ` A következő határidő: ${formatHuDate(application.nextDueAt)}.` : ''
       }`,
+      nextStep: application.nextDueAt
+        ? `Kérjük, a befizetést ${formatHuDate(application.nextDueAt)} napjáig indítsd el.`
+        : 'Kérjük, kövesd a megküldött fizetési tájékoztatót.',
     },
     payment_recorded: {
       subject: 'Rögzítettük a TabuLama-befizetést',
       message: `Eddig ${formatHUF(application.paidAmountHuf)} befizetést rögzítettünk, a fennmaradó összeg ${formatHUF(application.remainingAmountHuf)}.`,
+      nextStep: application.remainingAmountHuf > 0
+        ? application.nextDueAt
+          ? `A következő esedékesség: ${formatHuDate(application.nextDueAt)}.`
+          : 'A fennmaradó összeg következő határidejéről külön tájékoztatást küldünk.'
+        : 'A teljes képzési díj beérkezett; a beiratkozás állapotáról külön értesítést küldünk.',
     },
     enrolled: {
-      subject: 'Elkészült a TabuLama-beiratkozás',
-      message: 'A beiratkozás elkészült. Hamarosan küldjük a kurzus indulásához szükséges további tudnivalókat.',
+      subject: 'Sikeres TabuLama-beiratkozás',
+      message: 'A beiratkozásod sikeresen elkészült.',
+      nextStep: 'Hamarosan küldjük a kurzus indulásához szükséges további tudnivalókat.',
+    },
+    course_completed: {
+      subject: 'Sikeresen teljesítetted a TabuLama-kurzust',
+      message: 'Gratulálunk, a kurzust sikeresen teljesítetted.',
+      nextStep: 'A teljesítéshez kapcsolódó további dokumentumokról külön tájékoztatást küldünk.',
     },
   }
   const content = eventContent[event]
@@ -374,15 +386,44 @@ export async function sendApplicationWorkflowEmail(
   const testNotice = application.isTest
     ? 'TESZT folyamatértesítés – nem éles jelentkezés.'
     : null
+  const installmentLine = application.paymentType === 'installment'
+    && application.installmentCount
+    && application.installmentAmountHuf
+    ? `${application.installmentCount} × ${formatHUF(application.installmentAmountHuf)}`
+    : null
+  const rows: Row[] = [
+    { label: 'Jelentkezési azonosító', value: application.applicationId },
+    { label: 'Kurzus', value: application.courseTitle },
+    { label: 'Résztvevő', value: application.participantName },
+    { label: 'Fizetési konstrukció', value: application.packageName },
+    { label: 'Teljes összeg', value: formatHUF(application.totalAmountHuf) },
+    { label: 'Részletek', value: installmentLine },
+  ]
+  if (event === 'received') {
+    rows.push({ label: 'Jelentkezés időpontja', value: formatHuDateTime(application.receivedAt) })
+  }
+  if (event === 'awaiting_payment' || event === 'payment_recorded') {
+    rows.push(
+      { label: 'Befizetve', value: formatHUF(application.paidAmountHuf) },
+      { label: 'Fennmaradó összeg', value: formatHUF(application.remainingAmountHuf) },
+      {
+        label: 'Következő határidő',
+        value: application.nextDueAt ? formatHuDate(application.nextDueAt) : 'nincs rögzítve',
+      },
+    )
+  }
   const text = [
-    `Kedves ${application.participantName}!`,
+    `Kedves ${application.recipientName}!`,
     '',
     testNotice,
     content.message,
     '',
-    `Jelentkezési azonosító: ${application.applicationId}`,
-    `Kurzus: ${application.courseTitle}`,
-    `Teljes díj: ${formatHUF(application.totalAmountHuf)}`,
+    renderText(rows),
+    '',
+    `Következő lépés: ${content.nextStep}`,
+    content.paymentNotice ?? null,
+    '',
+    `Kérdés esetén válaszolj erre az e-mailre, vagy írj a ${provider.email} címre.`,
     '',
     `Üdvözlettel:`,
     provider.brandName,
@@ -390,11 +431,12 @@ export async function sendApplicationWorkflowEmail(
   const html = renderShell(
     subject,
     `${testNotice ? `<p style="padding:10px 12px;background:#fdf2f8;color:#9d174d;font-weight:700;border-radius:8px;">${escapeHtml(testNotice)}</p>` : ''}
-     <p>Kedves ${escapeHtml(application.participantName)}!</p>
+     <p>Kedves ${escapeHtml(application.recipientName)}!</p>
      <p>${escapeHtml(content.message)}</p>
-     <p><strong>Jelentkezési azonosító:</strong> ${escapeHtml(application.applicationId)}<br>
-        <strong>Kurzus:</strong> ${escapeHtml(application.courseTitle)}<br>
-        <strong>Teljes díj:</strong> ${escapeHtml(formatHUF(application.totalAmountHuf))}</p>
+     ${renderRowsHtml(rows)}
+     <p><strong>Következő lépés:</strong> ${escapeHtml(content.nextStep)}</p>
+     ${content.paymentNotice ? `<p>${escapeHtml(content.paymentNotice)}</p>` : ''}
+     <p>Kérdés esetén válaszolj erre az e-mailre, vagy írj a <a href="mailto:${escapeHtml(provider.email)}">${escapeHtml(provider.email)}</a> címre.</p>
      <p>Üdvözlettel:<br>${escapeHtml(provider.brandName)}</p>`,
   )
 

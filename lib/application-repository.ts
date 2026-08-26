@@ -4,7 +4,11 @@ import { createHash, randomUUID } from 'node:crypto'
 import { getSql } from '@/lib/database'
 import { provider } from '@/lib/tabulama-config'
 import { buildApplicationSchema, type ApplicationData } from '@/lib/tabulama-application-schema'
-import type { ApplicationMeta } from '@/lib/tabulama-email'
+import type {
+  ApplicationMeta,
+  ApplicationWorkflowEmailEvent,
+  EmailResult,
+} from '@/lib/tabulama-email'
 import type { ApplicationStatus, PaymentMethod } from '@/lib/admin-display'
 import { getApplicationCourseById } from '@/lib/course-repository'
 import {
@@ -51,7 +55,18 @@ export interface ApplicationDetails extends ApplicationListItem {
   utmCampaign: string | null
   submittedData: ApplicationData
   history: StatusHistoryItem[]
+  emailDeliveries: ApplicationEmailDelivery[]
   payment: PaymentSummary | null
+}
+
+export interface ApplicationEmailDelivery {
+  id: string
+  event: ApplicationWorkflowEmailEvent
+  recipient: string | null
+  status: EmailResult['status']
+  detail: string
+  attemptedAt: string
+  sentAt: string | null
 }
 
 export interface StatusHistoryItem {
@@ -156,6 +171,16 @@ interface HistoryRow {
   to_status: string
   note: string | null
   created_at: string | Date
+}
+
+interface EmailDeliveryRow {
+  id: string
+  event: ApplicationWorkflowEmailEvent
+  recipient: string | null
+  status: EmailResult['status']
+  detail: string
+  attempted_at: string | Date
+  sent_at: string | Date | null
 }
 
 interface PaymentPlanRow {
@@ -497,7 +522,14 @@ export async function listApplications(limit = 100): Promise<ApplicationListItem
 
 export async function getApplicationById(id: string): Promise<ApplicationDetails | null> {
   const sql = getSql()
-  const [applicationRows, historyRows, paymentPlanRows, paymentItemRows, paymentRows] = await Promise.all([
+  const [
+    applicationRows,
+    historyRows,
+    emailDeliveryRows,
+    paymentPlanRows,
+    paymentItemRows,
+    paymentRows,
+  ] = await Promise.all([
     sql.query(
       `SELECT
          a.id, a.participant_name, a.participant_birth_date,
@@ -518,6 +550,13 @@ export async function getApplicationById(id: string): Promise<ApplicationDetails
        FROM status_history
        WHERE entity_type = 'application' AND entity_id = $1
        ORDER BY created_at ASC`,
+      [id],
+    ),
+    sql.query(
+      `SELECT id, event, recipient, status, detail, attempted_at, sent_at
+       FROM application_email_deliveries
+       WHERE application_id = $1
+       ORDER BY attempted_at DESC`,
       [id],
     ),
     sql.query(
@@ -557,6 +596,15 @@ export async function getApplicationById(id: string): Promise<ApplicationDetails
     toStatus: item.to_status,
     note: item.note,
     createdAt: toIso(item.created_at) ?? '',
+  }))
+  const emailDeliveries = (emailDeliveryRows as EmailDeliveryRow[]).map((item) => ({
+    id: item.id,
+    event: item.event,
+    recipient: item.recipient,
+    status: item.status,
+    detail: item.detail,
+    attemptedAt: toIso(item.attempted_at) ?? '',
+    sentAt: toIso(item.sent_at),
   }))
 
   const records = (paymentRows as PaymentRow[]).map((payment) => ({
@@ -641,8 +689,33 @@ export async function getApplicationById(id: string): Promise<ApplicationDetails
     utmCampaign: row.utm_campaign,
     submittedData: row.submitted_data,
     history,
+    emailDeliveries,
     payment,
   }
+}
+
+export async function recordApplicationEmailDelivery(input: {
+  applicationId: string
+  event: ApplicationWorkflowEmailEvent
+  recipient: string | null
+  result: EmailResult
+}): Promise<void> {
+  const attemptedAt = new Date().toISOString()
+  await getSql().query(
+    `INSERT INTO application_email_deliveries (
+       id, application_id, event, recipient, status, detail, attempted_at, sent_at
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7::timestamptz, $8::timestamptz)`,
+    [
+      randomUUID(),
+      input.applicationId,
+      input.event,
+      input.recipient,
+      input.result.status,
+      input.result.detail,
+      attemptedAt,
+      input.result.status === 'sent' ? attemptedAt : null,
+    ],
+  )
 }
 
 export async function updateApplicationStatus(

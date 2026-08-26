@@ -69,6 +69,7 @@ export default async function ApplicationsPage({
                       </Link>
                       {application.isTest ? <span className="ml-2 rounded-full bg-fuchsia-100 px-2 py-0.5 text-xs font-bold text-fuchsia-800 ring-1 ring-fuchsia-200">TESZT</span> : null}
                       <p className="mt-1 text-slate-500">{application.contactEmail}</p>
+                      <p className="mt-1 font-mono text-xs text-slate-400">{application.id}</p>
                     </td>
                     <td className="px-5 py-4 text-slate-600">{application.courseTitle}</td>
                     <td className="px-5 py-4 font-semibold">{formatHUF(application.totalAmountHuf)}</td>

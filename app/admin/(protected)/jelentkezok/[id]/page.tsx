@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { notFound } from 'next/navigation'
 import { getApplicationById } from '@/lib/application-repository'
+import type { ApplicationWorkflowEmailEvent } from '@/lib/tabulama-email'
 import {
   APPLICATION_STATUSES,
   applicationStatusLabel,
@@ -26,6 +27,7 @@ import { formatHUF, packages } from '@/lib/tabulama-config'
 import { StatusBadge } from '@/components/admin/status-badge'
 import {
   recordApplicationPaymentAction,
+  resendApplicationEmailAction,
   updateApplicationStatusAction,
   updatePaymentItemDueDateAction,
 } from './actions'
@@ -46,6 +48,7 @@ const successMessages: Record<string, string> = {
   payment_recorded: 'A befizetés rögzítve, az egyenleg és a státuszok frissültek.',
   due_date_updated: 'A fizetési határidő és az érintett státuszok frissültek.',
   test_created: 'A 10 Ft-os TESZT jelentkezés elkészült.',
+  email_resent: 'A rendszerlevél sikeresen elküldve.',
 }
 
 const errorMessages: Record<string, string> = {
@@ -56,7 +59,25 @@ const errorMessages: Record<string, string> = {
   inactive_application: 'Elutasított vagy lemondott jelentkezéshez nem rögzíthető befizetés.',
   no_change: 'Válassz másik státuszt, vagy adj meg megjegyzést.',
   save_failed: 'A módosítás most nem menthető. Próbáld újra.',
+  email_send_failed: 'A rendszerlevél nem küldhető el. Az eredmény az e-mail státuszoknál látható.',
 }
+
+const emailEventLabels: Record<ApplicationWorkflowEmailEvent, string> = {
+  received: 'Jelentkezés beérkezett',
+  accepted: 'Jelentkezés elfogadva',
+  awaiting_payment: 'Fizetésre vár',
+  payment_recorded: 'Befizetés rögzítve',
+  enrolled: 'Sikeres beiratkozás',
+  course_completed: 'Kurzus teljesítve',
+}
+
+const resendableEmailEvents: ApplicationWorkflowEmailEvent[] = [
+  'received',
+  'accepted',
+  'awaiting_payment',
+  'payment_recorded',
+  'enrolled',
+]
 
 function paymentBadgeClasses(status: string): string {
   const variants: Record<string, string> = {
@@ -352,6 +373,55 @@ export default async function ApplicationDetailsPage({
               {application.contactPhone ? <a href={`tel:${application.contactPhone}`} className="flex items-center gap-3 rounded-xl bg-slate-50 px-3 py-3 font-semibold hover:bg-slate-100"><Phone className="h-4 w-4 text-[#9b6e2f]" />{application.contactPhone}</a> : null}
               <div className="flex items-start gap-3 rounded-xl bg-slate-50 px-3 py-3"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[#9b6e2f]" /><span>{application.billingAddress}</span></div>
             </div>
+          </section>
+
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h2 className="flex items-center gap-2 text-lg font-bold"><Mail className="h-5 w-5 text-[#9b6e2f]" /> Rendszerlevelek</h2>
+            {application.emailDeliveries.length > 0 ? (
+              <ul className="mt-4 space-y-3">
+                {application.emailDeliveries.map((delivery) => (
+                  <li key={delivery.id} className="rounded-xl border border-slate-200 p-3 text-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-bold text-slate-900">{emailEventLabels[delivery.event]}</p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {delivery.status === 'sent' ? 'Kiküldve: ' : 'Próbálkozás: '}
+                          {formatAdminDate(delivery.sentAt ?? delivery.attemptedAt)}
+                          {delivery.recipient ? ` · ${delivery.recipient}` : ''}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">{delivery.detail}</p>
+                      </div>
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-bold ring-1 ${
+                        delivery.status === 'sent'
+                          ? 'bg-emerald-50 text-emerald-800 ring-emerald-200'
+                          : delivery.status === 'error'
+                            ? 'bg-red-50 text-red-800 ring-red-200'
+                            : 'bg-slate-100 text-slate-700 ring-slate-200'
+                      }`}>
+                        {delivery.status === 'sent' ? 'Sikeres' : delivery.status === 'error' ? 'Sikertelen' : 'Kihagyva'}
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-4 text-sm text-slate-500">Még nincs naplózott rendszerlevél.</p>
+            )}
+
+            <form action={resendApplicationEmailAction} className="mt-4 space-y-3 border-t border-slate-100 pt-4">
+              <input type="hidden" name="applicationId" value={application.id} />
+              <label className="grid gap-1 text-sm font-semibold text-slate-700">
+                E-mail újraküldése
+                <select name="event" defaultValue="received" className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-normal text-slate-950 outline-none focus:border-[#9b6e2f] focus:ring-2 focus:ring-[#9b6e2f]/20">
+                  {resendableEmailEvents.map((event) => (
+                    <option key={event} value={event}>{emailEventLabels[event]}</option>
+                  ))}
+                </select>
+              </label>
+              <button type="submit" className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 transition hover:bg-slate-50">
+                E-mail küldése
+              </button>
+            </form>
           </section>
 
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">

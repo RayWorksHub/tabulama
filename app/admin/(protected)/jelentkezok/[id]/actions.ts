@@ -8,6 +8,7 @@ import {
   ApplicationMutationError,
   getApplicationById,
   recordApplicationPayment,
+  recordApplicationEmailDelivery,
   updateApplicationStatus,
   updatePaymentItemDueDate,
 } from '@/lib/application-repository'
@@ -18,8 +19,10 @@ import {
 } from '@/lib/admin-display'
 import {
   sendApplicationWorkflowEmail,
+  type EmailResult,
   type ApplicationWorkflowEmailEvent,
 } from '@/lib/tabulama-email'
+import { packages } from '@/lib/tabulama-config'
 
 const applicationIdSchema = z.string().trim().min(1).max(80)
 
@@ -54,6 +57,14 @@ const workflowEventByStatus: Partial<Record<ApplicationStatus, ApplicationWorkfl
   enrolled: 'enrolled',
 }
 
+const resendEventSchema = z.enum([
+  'received',
+  'accepted',
+  'awaiting_payment',
+  'payment_recorded',
+  'enrolled',
+])
+
 function applicationPath(id: string): string {
   return `/admin/jelentkezok/${encodeURIComponent(id)}`
 }
@@ -67,24 +78,66 @@ function mutationErrorKey(error: unknown): string {
 async function notifyApplication(
   applicationId: string,
   event: ApplicationWorkflowEmailEvent,
-): Promise<void> {
+): Promise<EmailResult> {
   try {
     const application = await getApplicationById(applicationId)
-    if (!application) return
-    await sendApplicationWorkflowEmail(event, {
+    if (!application) {
+      return { status: 'error', detail: 'A jelentkezés nem található.' }
+    }
+    const recipientName = application.guardianEmail === application.contactEmail
+      ? application.guardianName ?? application.participantName
+      : application.participantName
+    const installmentCount = application.payment?.installmentCount ?? null
+    const installmentAmountHuf = installmentCount && installmentCount > 1
+      ? application.payment?.items[0]?.amountHuf ?? null
+      : null
+    const result = await sendApplicationWorkflowEmail(event, {
       applicationId: application.id,
       participantName: application.participantName,
+      recipientName,
       recipient: application.contactEmail,
       courseTitle: application.courseTitle,
+      packageName: packages[application.packageKey].name,
+      paymentType: application.paymentType,
+      installmentCount,
+      installmentAmountHuf,
       totalAmountHuf: application.totalAmountHuf,
       paidAmountHuf: application.payment?.paidAmountHuf ?? 0,
       remainingAmountHuf: application.payment?.remainingAmountHuf ?? application.totalAmountHuf,
       nextDueAt: application.payment?.nextDueAt ?? null,
+      receivedAt: application.createdAt,
       isTest: application.isTest,
     })
+    try {
+      await recordApplicationEmailDelivery({
+        applicationId,
+        event,
+        recipient: application.contactEmail,
+        result,
+      })
+    } catch {
+      console.error(`[TabuLama] E-mail státusz mentése sikertelen (${applicationId}, ${event}).`)
+    }
+    return result
   } catch {
     console.error(`[TabuLama] Folyamatértesítés nem küldhető (${applicationId}, ${event}).`)
+    return { status: 'error', detail: 'A folyamatértesítő kézbesítése nem sikerült.' }
   }
+}
+
+export async function resendApplicationEmailAction(formData: FormData): Promise<void> {
+  const rawApplicationId = String(formData.get('applicationId') ?? '')
+  const returnTo = applicationIdSchema.safeParse(rawApplicationId).success
+    ? applicationPath(rawApplicationId)
+    : '/admin/jelentkezok'
+  await requireAdmin(returnTo)
+
+  const event = resendEventSchema.safeParse(formData.get('event'))
+  if (!event.success) redirect(`${returnTo}?error=invalid_form`)
+
+  const result = await notifyApplication(rawApplicationId, event.data)
+  revalidatePath(returnTo)
+  redirect(`${returnTo}?${result.status === 'sent' ? 'success=email_resent' : 'error=email_send_failed'}`)
 }
 
 export async function updateApplicationStatusAction(formData: FormData): Promise<void> {
