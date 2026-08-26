@@ -253,8 +253,21 @@ export async function sendInternalNotification(
       html: renderShell(subject, renderRowsHtml(rows)),
     })
     return { status: 'sent', detail: 'A belső értesítő elküldve.' }
-  } catch {
-    console.log(`[TabuLama] Belső e-mail kivétel (azonosító: ${meta.applicationId})`)
+  } catch (error: unknown) {
+    const smtpError = error as {
+      message?: unknown
+      code?: unknown
+      command?: unknown
+      responseCode?: unknown
+      response?: unknown
+    }
+    console.error(`[TabuLama] Belső e-mail kivétel (azonosító: ${meta.applicationId})`, {
+      message: typeof smtpError.message === 'string' ? smtpError.message : null,
+      code: typeof smtpError.code === 'string' ? smtpError.code : null,
+      command: typeof smtpError.command === 'string' ? smtpError.command : null,
+      responseCode: typeof smtpError.responseCode === 'number' ? smtpError.responseCode : null,
+      response: typeof smtpError.response === 'string' ? smtpError.response : null,
+    })
     return { status: 'error', detail: 'A belső értesítő kézbesítése nem sikerült.' }
   }
 }
