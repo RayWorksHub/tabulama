@@ -156,6 +156,43 @@ const PAYER_LABELS: Record<PayerType, string> = {
   company: 'Cég vagy más szervezet fizet',
 }
 
+const PAYER_NAME_LABELS: Record<PayerType, string> = {
+  participant: 'Résztvevő neve',
+  guardian: 'Törvényes képviselő neve',
+  'other-person': 'Másik magánszemély neve',
+  company: 'Cégnév',
+}
+
+const BILLING_FIELDS: (keyof FormState)[] = [
+  'billingName',
+  'billingZip',
+  'billingCity',
+  'billingAddress',
+  'billingEmail',
+  'taxNumber',
+]
+
+function stateForPayer(state: FormState, payerType: PayerType): FormState {
+  if (state.payerType === payerType) return state
+
+  const automaticData =
+    payerType === 'participant'
+      ? { billingName: state.participantName, billingEmail: state.participantEmail }
+      : payerType === 'guardian'
+        ? { billingName: state.guardianName, billingEmail: state.guardianEmail }
+        : { billingName: '', billingEmail: '' }
+
+  return {
+    ...state,
+    payerType,
+    ...automaticData,
+    billingZip: '',
+    billingCity: '',
+    billingAddress: '',
+    taxNumber: '',
+  }
+}
+
 function toPayload(s: FormState) {
   return { ...s }
 }
@@ -187,6 +224,7 @@ export function ApplicationFlow({ initialPackageKey, earlyBirdExpiredFromUrl }: 
   const [success, setSuccess] = useState<{ applicationId: string } | null>(null)
 
   const headingRef = useRef<HTMLHeadingElement>(null)
+  const messageRef = useRef<HTMLDivElement>(null)
   const submittingRef = useRef(false)
 
   const now = useMemo(() => new Date(), [])
@@ -206,10 +244,15 @@ export function ApplicationFlow({ initialPackageKey, earlyBirdExpiredFromUrl }: 
   useEffect(() => {
     setState((prev) => {
       if (!prev.participantBirthDate) return prev
-      if (isMinor && prev.payerType === 'participant') return { ...prev, payerType: 'guardian' }
-      if (!isMinor && prev.payerType === 'guardian') return { ...prev, payerType: 'participant' }
-      if (!prev.payerType) return { ...prev, payerType: isMinor ? 'guardian' : 'participant' }
+      if (isMinor && prev.payerType === 'participant') return stateForPayer(prev, 'guardian')
+      if (!isMinor && prev.payerType === 'guardian') return stateForPayer(prev, 'participant')
+      if (!prev.payerType) return stateForPayer(prev, isMinor ? 'guardian' : 'participant')
       return prev
+    })
+    setErrors((prev) => {
+      const next = { ...prev }
+      for (const field of BILLING_FIELDS) delete next[String(field)]
+      return next
     })
   }, [isMinor])
 
@@ -230,14 +273,47 @@ export function ApplicationFlow({ initialPackageKey, earlyBirdExpiredFromUrl }: 
     headingRef.current?.focus()
   }, [step, success])
 
+  useEffect(() => {
+    if (formMessage) messageRef.current?.focus()
+  }, [formMessage])
+
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
-    setState((prev) => ({ ...prev, [key]: value }))
-    setErrors((prev) => {
-      if (!prev[key as string]) return prev
-      const next = { ...prev }
-      delete next[key as string]
+    setState((prev) => {
+      const next: FormState = { ...prev, [key]: value }
+      if (key === 'participantName' && prev.payerType === 'participant') {
+        next.billingName = String(value)
+      }
+      if (key === 'participantEmail' && prev.payerType === 'participant') {
+        next.billingEmail = String(value)
+      }
+      if (key === 'guardianName' && prev.payerType === 'guardian') {
+        next.billingName = String(value)
+      }
+      if (key === 'guardianEmail' && prev.payerType === 'guardian') {
+        next.billingEmail = String(value)
+      }
       return next
     })
+    setErrors((prev) => {
+      const next = { ...prev }
+      delete next[key as string]
+      if (key === 'participantName' && state.payerType === 'participant') delete next.billingName
+      if (key === 'participantEmail' && state.payerType === 'participant') delete next.billingEmail
+      if (key === 'guardianName' && state.payerType === 'guardian') delete next.billingName
+      if (key === 'guardianEmail' && state.payerType === 'guardian') delete next.billingEmail
+      return next
+    })
+  }
+
+  function changePayerType(payerType: PayerType) {
+    setState((prev) => stateForPayer(prev, payerType))
+    setErrors((prev) => {
+      const next = { ...prev }
+      delete next.payerType
+      for (const field of BILLING_FIELDS) delete next[String(field)]
+      return next
+    })
+    setFormMessage(null)
   }
 
   function collectErrors(): Record<string, string> {
@@ -294,11 +370,11 @@ export function ApplicationFlow({ initialPackageKey, earlyBirdExpiredFromUrl }: 
     const allErrors = collectErrors()
     if (Object.keys(allErrors).length > 0) {
       setErrors(allErrors)
+      setFormMessage('Néhány mezőt még javítani kell a beküldés előtt.')
       // Ugorjunk az első hibát tartalmazó lépésre.
       const target = visibleSteps.find((s) => STEP_FIELDS[s].some((f) => allErrors[String(f)]))
       if (target) {
         setStep(target)
-        setFormMessage('Néhány mezőt még javítani kell a beküldés előtt.')
         setTimeout(() => focusFirstError(STEP_FIELDS[target].map(String), allErrors), 60)
       }
       return
@@ -314,8 +390,8 @@ export function ApplicationFlow({ initialPackageKey, earlyBirdExpiredFromUrl }: 
         body: JSON.stringify(toPayload(state)),
       })
       const data = await res.json().catch(() => ({}))
-      if (res.ok && data.ok) {
-        setSuccess({ applicationId: data.applicationId ?? '—' })
+      if (res.ok && data.ok && typeof data.applicationId === 'string' && data.applicationId) {
+        setSuccess({ applicationId: data.applicationId })
         return
       }
       if (res.status === 422 && data.fieldErrors) {
@@ -394,8 +470,10 @@ export function ApplicationFlow({ initialPackageKey, earlyBirdExpiredFromUrl }: 
 
         {formMessage && (
           <div
+            ref={messageRef}
+            tabIndex={-1}
             role="alert"
-            className="mt-6 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive"
+            className="mt-6 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive outline-none"
           >
             {formMessage}
           </div>
@@ -415,7 +493,13 @@ export function ApplicationFlow({ initialPackageKey, earlyBirdExpiredFromUrl }: 
             <GuardianStep state={state} errors={errors} update={update} />
           )}
           {step === 'payment' && (
-            <PaymentStep state={state} errors={errors} update={update} isMinor={isMinor} />
+            <PaymentStep
+              state={state}
+              errors={errors}
+              update={update}
+              onPayerTypeChange={changePayerType}
+              isMinor={isMinor}
+            />
           )}
           {step === 'declarations' && (
             <DeclarationsStep state={state} errors={errors} update={update} isMinor={isMinor} />
@@ -868,11 +952,13 @@ function PaymentStep({
   state,
   errors,
   update,
+  onPayerTypeChange,
   isMinor,
 }: {
   state: FormState
   errors: Record<string, string>
   update: <K extends keyof FormState>(k: K, v: FormState[K]) => void
+  onPayerTypeChange: (payerType: PayerType) => void
   isMinor: boolean
 }) {
   const options = (Object.keys(PAYER_LABELS) as PayerType[]).filter((k) => {
@@ -881,17 +967,10 @@ function PaymentStep({
     return true
   })
 
-  function fillFrom(source: 'participant' | 'guardian') {
-    if (source === 'participant') {
-      update('billingName', state.participantName)
-      if (state.participantEmail) update('billingEmail', state.participantEmail)
-    } else {
-      update('billingName', state.guardianName)
-      if (state.guardianEmail) update('billingEmail', state.guardianEmail)
-    }
-  }
-
   const isCompany = state.payerType === 'company'
+  const billingNameLabel = state.payerType
+    ? PAYER_NAME_LABELS[state.payerType]
+    : 'Számlázási név'
 
   return (
     <div className="grid gap-5">
@@ -904,7 +983,7 @@ function PaymentStep({
               <button
                 type="button"
                 key={k}
-                onClick={() => update('payerType', k)}
+                onClick={() => onPayerTypeChange(k)}
                 className={`rounded-xl border-2 px-4 py-3 text-left text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
                   selected ? 'border-primary bg-primary/5 text-foreground' : 'border-border text-muted-foreground hover:border-primary/50'
                 }`}
@@ -922,26 +1001,7 @@ function PaymentStep({
         )}
       </fieldset>
 
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => fillFrom('participant')}
-          className="rounded-full border border-border px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          Adatok átvétele a résztvevőtől
-        </button>
-        {isMinor && (
-          <button
-            type="button"
-            onClick={() => fillFrom('guardian')}
-            className="rounded-full border border-border px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            Adatok átvétele a képviselőtől
-          </button>
-        )}
-      </div>
-
-      <Field id="billingName" label="Számlázási név vagy cégnév" required error={errors.billingName}>
+      <Field id="billingName" label={billingNameLabel} required error={errors.billingName}>
         {(p) => <TextInput {...p} value={state.billingName} onChange={(v) => update('billingName', v)} />}
       </Field>
 
@@ -967,14 +1027,11 @@ function PaymentStep({
         {(p) => <TextInput {...p} type="email" inputMode="email" value={state.billingEmail} onChange={(v) => update('billingEmail', v)} autoComplete="email" />}
       </Field>
 
-      <Field
-        id="taxNumber"
-        label={isCompany ? 'Adószám' : 'Adószám (nem kötelező)'}
-        required={isCompany}
-        error={errors.taxNumber}
-      >
-        {(p) => <TextInput {...p} value={state.taxNumber} onChange={(v) => update('taxNumber', v)} placeholder="pl. 12345678-1-42" />}
-      </Field>
+      {isCompany && (
+        <Field id="taxNumber" label="Adószám" required error={errors.taxNumber}>
+          {(p) => <TextInput {...p} value={state.taxNumber} onChange={(v) => update('taxNumber', v)} placeholder="pl. 12345678-1-42" />}
+        </Field>
+      )}
 
       <p className="text-xs text-muted-foreground">
         Ezeket az adatokat kizárólag a későbbi díjbekérő előkészítéséhez gyűjtjük.
