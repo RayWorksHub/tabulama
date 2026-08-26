@@ -125,7 +125,7 @@ export interface AdminDashboardStats {
 interface ApplicationRow {
   id: string
   participant_name: string
-  participant_birth_date: string
+  participant_birth_date: string | Date
   participant_email: string | null
   participant_phone: string | null
   guardian_name: string | null
@@ -146,7 +146,7 @@ interface ApplicationRow {
   utm_medium: string | null
   utm_campaign: string | null
   submitted_data: ApplicationData
-  created_at: string
+  created_at: string | Date
   course_title: string
 }
 
@@ -155,7 +155,7 @@ interface HistoryRow {
   from_status: string | null
   to_status: string
   note: string | null
-  created_at: string
+  created_at: string | Date
 }
 
 interface PaymentPlanRow {
@@ -169,9 +169,9 @@ interface PaymentItemRow {
   id: string
   position: number
   amount_huf: number
-  due_at: string | null
+  due_at: string | Date | null
   status: string
-  paid_at: string | null
+  paid_at: string | Date | null
   payment_method: PaymentMethod | null
 }
 
@@ -179,10 +179,10 @@ interface PaymentRow {
   id: string
   payment_item_id: string
   amount_huf: number
-  paid_at: string
+  paid_at: string | Date
   payment_method: PaymentMethod
   note: string | null
-  created_at: string
+  created_at: string | Date
 }
 
 interface PaymentTargetRow {
@@ -193,10 +193,14 @@ interface PaymentTargetRow {
   plan_total_amount_huf: number
   plan_status: string
   application_status: ApplicationStatus
-  item_due_at: string | null
+  item_due_at: string | Date | null
   item_paid_amount_huf: number
   plan_paid_amount_huf: number
   other_overdue: boolean
+}
+
+function toIso(value: string | Date | null | undefined): string | null {
+  return value instanceof Date ? value.toISOString() : value ?? null
 }
 
 interface PaymentScheduleItem {
@@ -245,7 +249,7 @@ function toListItem(row: ApplicationRow): ApplicationListItem {
     totalAmountHuf: Number(row.total_amount_huf),
     status: row.status,
     isTest: row.is_test,
-    createdAt: row.created_at,
+    createdAt: toIso(row.created_at) ?? '',
   }
 }
 
@@ -552,17 +556,17 @@ export async function getApplicationById(id: string): Promise<ApplicationDetails
     fromStatus: item.from_status,
     toStatus: item.to_status,
     note: item.note,
-    createdAt: item.created_at,
+    createdAt: toIso(item.created_at) ?? '',
   }))
 
   const records = (paymentRows as PaymentRow[]).map((payment) => ({
     id: payment.id,
     paymentItemId: payment.payment_item_id,
     amountHuf: Number(payment.amount_huf),
-    paidAt: payment.paid_at,
+    paidAt: toIso(payment.paid_at) ?? '',
     paymentMethod: payment.payment_method,
     note: payment.note,
-    createdAt: payment.created_at,
+    createdAt: toIso(payment.created_at) ?? '',
   }))
   const recordsByItem = new Map<string, PaymentRecord[]>()
   for (const record of records) {
@@ -576,6 +580,7 @@ export async function getApplicationById(id: string): Promise<ApplicationDetails
     const itemRecords = recordsByItem.get(item.id) ?? []
     const paidAmountHuf = itemRecords.reduce((sum, payment) => sum + payment.amountHuf, 0)
     const amountHuf = Number(item.amount_huf)
+    const dueAt = toIso(item.due_at)
 
     return {
       id: item.id,
@@ -583,15 +588,15 @@ export async function getApplicationById(id: string): Promise<ApplicationDetails
       amountHuf,
       paidAmountHuf,
       remainingAmountHuf: Math.max(amountHuf - paidAmountHuf, 0),
-      dueAt: item.due_at,
+      dueAt,
       status: paymentItemState({
         amountHuf,
         paidAmountHuf,
-        dueAt: item.due_at,
+        dueAt,
         currentStatus: item.status,
         now,
       }),
-      paidAt: item.paid_at,
+      paidAt: toIso(item.paid_at),
       paymentMethod: item.payment_method,
       payments: itemRecords,
     }
@@ -618,7 +623,7 @@ export async function getApplicationById(id: string): Promise<ApplicationDetails
 
   return {
     ...toListItem(row),
-    participantBirthDate: row.participant_birth_date,
+    participantBirthDate: toIso(row.participant_birth_date) ?? '',
     participantEmail: row.participant_email,
     participantPhone: row.participant_phone,
     guardianName: row.guardian_name,
@@ -724,7 +729,7 @@ export async function updatePaymentItemDueDate(input: {
   const target = rows[0]
   if (!target) throw new ApplicationMutationError('payment_plan_missing')
 
-  const previousDay = target.item_due_at?.slice(0, 10) ?? null
+  const previousDay = toIso(target.item_due_at)?.slice(0, 10) ?? null
   const nextDay = input.dueAt?.slice(0, 10) ?? null
   if (previousDay === nextDay) throw new ApplicationMutationError('no_change')
 
@@ -848,7 +853,7 @@ export async function recordApplicationPayment(input: {
   const itemStatus = paymentItemState({
     amountHuf: itemAmountHuf,
     paidAmountHuf: itemPaidAfter,
-    dueAt: target.item_due_at,
+    dueAt: toIso(target.item_due_at),
     currentStatus: target.item_status,
     now: new Date(changedAt),
   })
