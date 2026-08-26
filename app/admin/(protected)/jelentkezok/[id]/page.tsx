@@ -138,7 +138,7 @@ export default async function ApplicationDetailsPage({
             <h2 className="flex items-center gap-2 text-lg font-bold"><UserRound className="h-5 w-5 text-[#9b6e2f]" /> Személyes adatok</h2>
             <dl className="mt-4">
               <DetailRow label="Név" value={application.participantName} />
-              <DetailRow label="Születési dátum" value={application.participantBirthDate} />
+              <DetailRow label="Születési dátum" value={formatAdminDay(application.participantBirthDate)} />
               <DetailRow label="E-mail" value={application.participantEmail ? <a className="hover:underline" href={`mailto:${application.participantEmail}`}>{application.participantEmail}</a> : null} />
               <DetailRow label="Telefon" value={application.participantPhone ? <a className="hover:underline" href={`tel:${application.participantPhone}`}>{application.participantPhone}</a> : null} />
               <DetailRow label="Évfolyam" value={data.grade} />
@@ -386,3 +386,4 @@ export default async function ApplicationDetailsPage({
     </div>
   )
 }
+f2a65c8bd3fc9a09da81fab98b2fcecad528a248
