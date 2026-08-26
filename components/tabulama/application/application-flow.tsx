@@ -238,7 +238,7 @@ export function ApplicationFlow({ initialPackageKey, earlyBirdExpiredFromUrl }: 
     if (isMinor) base.push('guardian')
     base.push('payment', 'declarations', 'review')
     return base
-  }, [isMinor, state.participantBirthDate])
+  }, [isMinor])
 
   // Ha a kiskorú/nagykorú státusz megváltozik, igazítsuk a fizető alapértékét.
   useEffect(() => {
@@ -254,7 +254,7 @@ export function ApplicationFlow({ initialPackageKey, earlyBirdExpiredFromUrl }: 
       for (const field of BILLING_FIELDS) delete next[String(field)]
       return next
     })
-  }, [isMinor])
+  }, [isMinor, state.participantBirthDate])
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
