@@ -86,14 +86,14 @@ interface CourseRow {
   summary: string
   category: string
   image_url: string | null
-  start_date: string | null
-  end_date: string | null
-  application_deadline: string | null
+  start_date: string | Date | null
+  end_date: string | Date | null
+  application_deadline: string | Date | null
   weekly_schedule: string | null
   max_capacity: number | null
   price_huf: number
   discounted_price_huf: number | null
-  discounted_payment_deadline: string | null
+  discounted_payment_deadline: string | Date | null
   installment_enabled: boolean
   installment_count: number | null
   installment_amount_huf: number | null
@@ -105,8 +105,8 @@ interface CourseRow {
   syllabus: string | null
   applications_enabled: boolean
   current_headcount: number
-  created_at: string
-  updated_at: string
+  created_at: string | Date
+  updated_at: string | Date
 }
 
 const COURSE_SELECT = `
@@ -129,6 +129,7 @@ const COURSE_SELECT = `
   FROM courses c`
 
 function toCourse(row: CourseRow): Course {
+  const iso = (value: string | Date | null): string | null => value instanceof Date ? value.toISOString() : value
   const maxCapacity = row.max_capacity === null ? null : Number(row.max_capacity)
   const currentHeadcount = Number(row.current_headcount)
   return {
@@ -140,14 +141,14 @@ function toCourse(row: CourseRow): Course {
     summary: row.summary,
     category: row.category,
     imageUrl: row.image_url,
-    startDate: row.start_date,
-    endDate: row.end_date,
-    applicationDeadline: row.application_deadline,
+    startDate: iso(row.start_date),
+    endDate: iso(row.end_date),
+    applicationDeadline: iso(row.application_deadline),
     weeklySchedule: row.weekly_schedule,
     maxCapacity,
     priceHuf: Number(row.price_huf),
     discountedPriceHuf: row.discounted_price_huf === null ? null : Number(row.discounted_price_huf),
-    discountedPaymentDeadline: row.discounted_payment_deadline,
+    discountedPaymentDeadline: iso(row.discounted_payment_deadline),
     installmentEnabled: row.installment_enabled,
     installmentCount: row.installment_count === null ? null : Number(row.installment_count),
     installmentAmountHuf: row.installment_amount_huf === null ? null : Number(row.installment_amount_huf),
@@ -160,8 +161,8 @@ function toCourse(row: CourseRow): Course {
     applicationsEnabled: row.applications_enabled,
     currentHeadcount,
     remainingCapacity: maxCapacity === null ? null : Math.max(maxCapacity - currentHeadcount, 0),
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    createdAt: iso(row.created_at) ?? '',
+    updatedAt: iso(row.updated_at) ?? '',
   }
 }
 
