@@ -238,7 +238,7 @@ export function ApplicationFlow({ initialPackageKey, earlyBirdExpiredFromUrl }: 
     if (isMinor) base.push('guardian')
     base.push('payment', 'declarations', 'review')
     return base
-  }, [isMinor])
+  }, [isMinor, state.participantBirthDate])
 
   // Ha a kiskorú/nagykorú státusz megváltozik, igazítsuk a fizető alapértékét.
   useEffect(() => {

@@ -142,7 +142,10 @@ export function buildApplicationSchema(now: Date = new Date()) {
       guardianName: z.string().trim().max(120).optional().transform((v) => (v ? v : undefined)),
       guardianEmail: z.string().trim().max(160).optional().transform((v) => (v ? v : undefined)),
       guardianPhone: z.string().trim().max(40).optional().transform((v) => (v ? v : undefined)),
-      guardianRelation: z.enum(guardianRelations).optional(),
+      guardianRelation: z
+        .union([z.enum(guardianRelations), z.literal('')])
+        .optional()
+        .transform((v) => (v ? v : undefined)),
       guardianDeclaration: z.boolean().optional(),
 
       // Fizető és számlázás
