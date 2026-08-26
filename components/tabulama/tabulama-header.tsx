@@ -10,7 +10,7 @@ import { TabuLamaLogo } from '@/components/tabulama/tabulama-logo'
 
 const navItems = [
   { href: '/', label: 'Főoldal' },
-  { href: '/tanfolyamok', label: 'Tanfolyamok' },
+  { href: '/kurzusok', label: 'Kurzusok' },
 ]
 
 export function TabuLamaHeader() {

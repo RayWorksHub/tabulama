@@ -5,7 +5,7 @@ import { provider } from '@/lib/tabulama-config'
 
 const navItems = [
   { href: '/', label: 'Főoldal' },
-  { href: '/tanfolyamok', label: 'Tanfolyamok' },
+  { href: '/kurzusok', label: 'Kurzusok' },
   { href: '/jelentkezes', label: 'Jelentkezés' },
 ]
 
