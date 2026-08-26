@@ -10,7 +10,6 @@
 import { z } from 'zod'
 import {
   PACKAGE_KEYS,
-  EARLY_BIRD_DEADLINE_ISO,
   type PackageKey,
 } from '@/lib/tabulama-config'
 
@@ -106,6 +105,7 @@ const optionalTrimmed = z
 export function buildApplicationSchema(now: Date = new Date()) {
   return z
     .object({
+      courseId: z.string().trim().min(1, 'Nincs kiválasztott kurzus.').max(120),
       packageKey: z.enum(PACKAGE_KEYS as [PackageKey, ...PackageKey[]]),
       applicantType: z.enum(['child', 'self']),
 
@@ -260,14 +260,6 @@ export function buildApplicationSchema(now: Date = new Date()) {
         }
       }
 
-      // Early-bird lejárat – szerver- és kliensoldalon is
-      if (data.packageKey === 'early-bird' && now.getTime() > new Date(EARLY_BIRD_DEADLINE_ISO).getTime()) {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['packageKey'],
-          message: 'A korai (early-bird) ajánlat már lejárt. Kérjük, válassz másik csomagot.',
-        })
-      }
     })
 }
 

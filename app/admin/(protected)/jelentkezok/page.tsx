@@ -5,6 +5,7 @@ import { formatAdminDate } from '@/lib/admin-display'
 import { formatHUF } from '@/lib/tabulama-config'
 import { StatusBadge } from '@/components/admin/status-badge'
 import { createTestApplicationAction } from './actions'
+import { listCourses } from '@/lib/course-repository'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,7 +15,7 @@ export default async function ApplicationsPage({
   searchParams: Promise<{ error?: string }>
 }) {
   const feedback = await searchParams
-  const applications = await listApplications()
+  const [applications, courses] = await Promise.all([listApplications(), listCourses()])
 
   return (
     <div className="mx-auto max-w-7xl">
@@ -24,7 +25,12 @@ export default async function ApplicationsPage({
           <h1 className="mt-2 text-3xl font-bold tracking-tight">Jelentkezők</h1>
           <p className="mt-2 text-slate-600">{applications.length} jelentkezés a központi adatbázisban.</p>
         </div>
-        <form action={createTestApplicationAction}>
+        <form action={createTestApplicationAction} className="flex flex-col gap-2 sm:flex-row">
+          <label className="sr-only" htmlFor="test-course">TESZT kurzusa</label>
+          <select id="test-course" name="courseId" required className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold">
+            <option value="">Válassz kurzust</option>
+            {courses.map((course) => <option key={course.id} value={course.id}>{course.shortTitle}</option>)}
+          </select>
           <button type="submit" className="inline-flex items-center justify-center gap-2 rounded-xl bg-fuchsia-700 px-4 py-3 text-sm font-bold text-white transition hover:bg-fuchsia-800">
             <FlaskConical className="h-4 w-4" />
             10 Ft-os TESZT jelentkezés

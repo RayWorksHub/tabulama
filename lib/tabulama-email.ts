@@ -1,12 +1,12 @@
 import nodemailer, { type Transporter } from 'nodemailer'
 import {
-  packages,
   provider,
   legalDocuments,
   formatHUF,
   formatHuDate,
   formatHuDateTime,
 } from '@/lib/tabulama-config'
+import type { ApplicationPricing } from '@/lib/course-payment-options'
 import {
   computeAgeInfo,
   type ApplicationData,
@@ -64,41 +64,31 @@ interface Row {
 }
 
 /** A választott csomag ember által olvasható díjsora. */
-function priceLine(packageKey: ApplicationData['packageKey']): string {
-  const pkg = packages[packageKey]
-  return pkg.paymentType === 'installment' && pkg.installmentCount && pkg.installmentAmount
-    ? `${formatHUF(pkg.total)} (${pkg.installmentCount} × ${formatHUF(pkg.installmentAmount)})`
-    : formatHUF(pkg.total)
+function priceLine(pricing: ApplicationPricing): string {
+  return pricing.paymentType === 'installment' && pricing.installmentCount && pricing.installmentAmountHuf
+    ? `${formatHUF(pricing.totalHuf)} (${pricing.installmentCount} × ${formatHUF(pricing.installmentAmountHuf)})`
+    : formatHUF(pricing.totalHuf)
 }
 
 /** A belső értesítő sorai a validált jelentkezésből. */
-function buildRows(data: ApplicationData, meta: ApplicationMeta): Row[] {
-  const pkg = packages[data.packageKey]
+function buildRows(data: ApplicationData, meta: ApplicationMeta, pricing: ApplicationPricing): Row[] {
   const ageInfo = computeAgeInfo(data.participantBirthDate, meta.receivedAt)
 
   const rows: Row[] = [
     { label: 'Jelentkezési azonosító', value: meta.applicationId },
     { label: 'Beérkezett', value: formatHuDateTime(meta.receivedAt.toISOString()) },
     { label: 'Következő teendő', value: 'Telefonos kapcsolatfelvétel' },
-    { label: '— Csomag —', value: '' },
-    { label: 'Választott csomag', value: pkg.name },
-    { label: 'Képzési díj', value: priceLine(data.packageKey) },
+    { label: '— Kurzus és csomag —', value: '' },
+    { label: 'Kurzus', value: pricing.courseTitle },
+    { label: 'Választott csomag', value: pricing.packageName },
+    { label: 'Képzési díj', value: priceLine(pricing) },
   ]
 
-  if (pkg.paymentDeadline) {
+  if (pricing.paymentDeadline) {
     rows.push({
-      label: pkg.paymentType === 'installment' ? 'Első részlet határideje' : 'Fizetési határidő',
-      value: formatHuDate(pkg.paymentDeadline),
+      label: pricing.paymentType === 'installment' ? 'Első részlet határideje' : 'Fizetési határidő',
+      value: formatHuDate(pricing.paymentDeadline),
     })
-  }
-  if (pkg.bonusPrivateLessons) {
-    rows.push({
-      label: 'Ajándék magánóra',
-      value: `${pkg.bonusPrivateLessons} × ${pkg.bonusLessonMinutes} perc (fizetéshez kötött)`,
-    })
-    if (pkg.savingsVsStandard) {
-      rows.push({ label: 'Megtakarítás', value: formatHUF(pkg.savingsVsStandard) })
-    }
   }
 
   rows.push(
@@ -238,6 +228,7 @@ function createTransporter(): Transporter | null {
 export async function sendInternalNotification(
   data: ApplicationData,
   meta: ApplicationMeta,
+  pricing: ApplicationPricing,
 ): Promise<EmailResult> {
   const recipient = INTERNAL_RECIPIENT()
   const transporter = createTransporter()
@@ -249,8 +240,8 @@ export async function sendInternalNotification(
     return { status: 'skipped', detail: 'E-mail kézbesítés nincs konfigurálva.' }
   }
 
-  const rows = buildRows(data, meta)
-  const subject = `Új TabuLama-jelentkezés – ${data.participantName} – ${packages[data.packageKey].name}`
+  const rows = buildRows(data, meta, pricing)
+  const subject = `Új TabuLama-jelentkezés – ${data.participantName} – ${pricing.courseTitle}`
 
   try {
     await transporter.sendMail({
@@ -282,6 +273,7 @@ function applicantRecipient(data: ApplicationData, meta: ApplicationMeta): strin
 export async function sendApplicantConfirmation(
   data: ApplicationData,
   meta: ApplicationMeta,
+  pricing: ApplicationPricing,
 ): Promise<EmailResult> {
   const to = applicantRecipient(data, meta)
   const transporter = createTransporter()
@@ -290,12 +282,7 @@ export async function sendApplicantConfirmation(
     return { status: 'skipped', detail: 'Jelentkezői visszaigazolás nincs konfigurálva vagy nincs cím.' }
   }
 
-  const pkg = packages[data.packageKey]
   const subject = 'Megérkezett a TabuLama-jelentkezés'
-  const bonus =
-    pkg.bonusPrivateLessons != null
-      ? ` A korai ajánlathoz ${pkg.bonusPrivateLessons} × ${pkg.bonusLessonMinutes} perc ajándék magánóra jár a díj beérkezése után.`
-      : ''
 
   const text = [
     `Kedves Jelentkező!`,
@@ -303,8 +290,9 @@ export async function sendApplicantConfirmation(
     `Köszönjük, hogy jelentkeztél a TabuLama Programozó Akadémiára.`,
     ``,
     `Jelentkezési azonosító: ${meta.applicationId}`,
+    `Kurzus: ${pricing.courseTitle}`,
     `Résztvevő: ${data.participantName}`,
-    `Választott csomag: ${pkg.name} – ${priceLine(data.packageKey)}.${bonus}`,
+    `Választott csomag: ${pricing.packageName} – ${priceLine(pricing)}.`,
     ``,
     `Rajmund hamarosan telefonon keres a megadott számon, hogy átbeszéljétek a részleteket.`,
     `A jelentkezés még nem jelent automatikus felvételt vagy szerződéskötést, és most még nem kell fizetni – a díjbekérő a telefonos egyeztetés és a szerződés után érkezik.`,
@@ -320,8 +308,9 @@ export async function sendApplicantConfirmation(
     `<p>Kedves Jelentkező!</p>
      <p>Köszönjük, hogy jelentkeztél a <strong>${escapeHtml(provider.brandName)}</strong> képzésére.</p>
      <p><strong>Jelentkezési azonosító:</strong> ${escapeHtml(meta.applicationId)}<br>
+        <strong>Kurzus:</strong> ${escapeHtml(pricing.courseTitle)}<br>
         <strong>Résztvevő:</strong> ${escapeHtml(data.participantName)}<br>
-        <strong>Választott csomag:</strong> ${escapeHtml(pkg.name)} – ${escapeHtml(priceLine(data.packageKey))}.${escapeHtml(bonus)}</p>
+        <strong>Választott csomag:</strong> ${escapeHtml(pricing.packageName)} – ${escapeHtml(priceLine(pricing))}.</p>
      <p>Rajmund hamarosan telefonon keres a megadott számon, hogy átbeszéljétek a részleteket.</p>
      <p>A jelentkezés még nem jelent automatikus felvételt vagy szerződéskötést, és most még nem kell fizetni – a díjbekérő a telefonos egyeztetés és a szerződés után érkezik.</p>
      <p>Kérdés esetén írj bátran: <a href="mailto:${escapeHtml(provider.email)}">${escapeHtml(provider.email)}</a></p>

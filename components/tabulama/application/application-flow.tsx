@@ -16,14 +16,14 @@ import {
   BadgeCheck,
 } from 'lucide-react'
 import {
-  packages,
   formatHUF,
   formatHuDate,
-  isEarlyBirdAvailable,
   legalDocuments,
   provider,
   type PackageKey,
 } from '@/lib/tabulama-config'
+import type { ApplicationCourse } from '@/lib/course-repository'
+import type { CoursePaymentOption, CoursePaymentOptions } from '@/lib/course-payment-options'
 import {
   buildApplicationSchema,
   computeAgeInfo,
@@ -46,6 +46,7 @@ type StepKey =
   | 'review'
 
 interface FormState {
+  courseId: string
   packageKey: PackageKey | ''
   applicantType: 'child' | 'self' | ''
   participantName: string
@@ -83,6 +84,7 @@ interface FormState {
 }
 
 const emptyState: FormState = {
+  courseId: '',
   packageKey: '',
   applicantType: '',
   participantName: '',
@@ -130,7 +132,7 @@ const STEP_LABELS: Record<StepKey, string> = {
 }
 
 const STEP_FIELDS: Record<StepKey, (keyof FormState)[]> = {
-  package: ['packageKey'],
+  package: ['courseId', 'packageKey'],
   applicant: ['applicantType'],
   participant: [
     'participantName',
@@ -198,18 +200,18 @@ function toPayload(s: FormState) {
 }
 
 interface Props {
+  course: ApplicationCourse
   initialPackageKey: PackageKey | null
   /** Igaz, ha az URL early-bird csomagot kért, de az már lejárt. */
   earlyBirdExpiredFromUrl: boolean
 }
 
-export function ApplicationFlow({ initialPackageKey, earlyBirdExpiredFromUrl }: Props) {
-  const earlyBirdOpen = useMemo(() => isEarlyBirdAvailable(), [])
-
+export function ApplicationFlow({ course, initialPackageKey, earlyBirdExpiredFromUrl }: Props) {
   const [state, setState] = useState<FormState>(() => ({
     ...emptyState,
+    courseId: course.id,
     packageKey:
-      initialPackageKey && (initialPackageKey !== 'early-bird' || earlyBirdOpen)
+      initialPackageKey && course.paymentOptions[initialPackageKey]?.available
         ? initialPackageKey
         : '',
   }))
@@ -422,11 +424,15 @@ export function ApplicationFlow({ initialPackageKey, earlyBirdExpiredFromUrl }: 
   }
 
   const stepIndex = visibleSteps.indexOf(step)
-  const pkg = state.packageKey ? packages[state.packageKey] : null
+  const pkg = state.packageKey ? course.paymentOptions[state.packageKey] : null
 
   return (
     <div className="grid gap-8 lg:grid-cols-[1fr_320px]">
       <div className="order-2 lg:order-1">
+        <div className="mb-6 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Kiválasztott kurzus</p>
+          <p className="mt-1 font-heading font-bold text-foreground">{course.title}</p>
+        </div>
         {/* Progress */}
         <ol className="mb-8 flex flex-wrap items-center gap-x-2 gap-y-2 text-sm" aria-label="Lépések">
           {visibleSteps.map((s, i) => {
@@ -481,7 +487,7 @@ export function ApplicationFlow({ initialPackageKey, earlyBirdExpiredFromUrl }: 
 
         <div className="mt-6">
           {step === 'package' && (
-            <PackageStep state={state} earlyBirdOpen={earlyBirdOpen} error={errors.packageKey} onSelect={(k) => update('packageKey', k)} />
+            <PackageStep state={state} paymentOptions={course.paymentOptions} error={errors.packageKey} onSelect={(k) => update('packageKey', k)} />
           )}
           {step === 'applicant' && (
             <ApplicantStep value={state.applicantType} error={errors.applicantType} onSelect={(v) => update('applicantType', v)} />
@@ -505,7 +511,7 @@ export function ApplicationFlow({ initialPackageKey, earlyBirdExpiredFromUrl }: 
             <DeclarationsStep state={state} errors={errors} update={update} isMinor={isMinor} />
           )}
           {step === 'review' && (
-            <ReviewStep state={state} isMinor={isMinor} onEdit={jumpTo} />
+            <ReviewStep state={state} isMinor={isMinor} paymentOptions={course.paymentOptions} onEdit={jumpTo} />
           )}
         </div>
 
@@ -701,12 +707,12 @@ function CheckboxRow(props: {
 
 function PackageStep({
   state,
-  earlyBirdOpen,
+  paymentOptions,
   error,
   onSelect,
 }: {
   state: FormState
-  earlyBirdOpen: boolean
+  paymentOptions: CoursePaymentOptions
   error?: string
   onSelect: (k: PackageKey) => void
 }) {
@@ -718,8 +724,9 @@ function PackageStep({
       </legend>
       <div id="f-packageKey" className="mt-4 grid gap-3" aria-invalid={Boolean(error)}>
         {order.map((key) => {
-          const pkg = packages[key]
-          const disabled = key === 'early-bird' && !earlyBirdOpen
+          const pkg = paymentOptions[key]
+          if (!pkg) return null
+          const disabled = !pkg.available
           const selected = state.packageKey === key
           return (
             <button
@@ -1123,13 +1130,15 @@ function LegalPlaceholderNotice({ doc }: { doc: string }) {
 function ReviewStep({
   state,
   isMinor,
+  paymentOptions,
   onEdit,
 }: {
   state: FormState
   isMinor: boolean
+  paymentOptions: CoursePaymentOptions
   onEdit: (s: StepKey) => void
 }) {
-  const pkg = state.packageKey ? packages[state.packageKey] : null
+  const pkg = state.packageKey ? paymentOptions[state.packageKey] : null
   return (
     <div className="grid gap-4">
       <ReviewBlock title="Csomag" onEdit={() => onEdit('package')}>
@@ -1237,7 +1246,7 @@ function Row({ label, value }: { label: string; value: string }) {
   )
 }
 
-function PackageSummary({ pkg, onChange }: { pkg: (typeof packages)[PackageKey] | null; onChange: () => void }) {
+function PackageSummary({ pkg, onChange }: { pkg: CoursePaymentOption | null; onChange: () => void }) {
   return (
     <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
       <div className="flex items-center justify-between gap-3">

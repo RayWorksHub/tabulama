@@ -9,6 +9,7 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test:p1": "node --experimental-strip-types --test tests/payment-calculations.test.ts",
+    "test:p2": "node --experimental-strip-types --test tests/course-payment-options.test.ts",
     "admin:credentials": "node scripts/create-admin-credentials.mjs",
     "env:check": "node scripts/check-environment.mjs",
     "db:migrate:check": "node scripts/migrate-database.mjs --check",

@@ -2,6 +2,7 @@ import 'server-only'
 
 import { randomUUID } from 'node:crypto'
 import { getSql } from '@/lib/database'
+import { buildCoursePaymentOptions, type CoursePaymentOptions } from '@/lib/course-payment-options'
 
 export const COURSE_STATUSES = [
   'draft',
@@ -59,6 +60,21 @@ export interface Course extends CourseInput {
   remainingCapacity: number | null
   createdAt: string
   updatedAt: string
+}
+
+export interface ApplicationCourse {
+  id: string
+  slug: string
+  title: string
+  shortTitle: string
+  status: CourseStatus
+  applicationsEnabled: boolean
+  applicationDeadline: string | null
+  maxCapacity: number | null
+  currentHeadcount: number
+  remainingCapacity: number | null
+  acceptingApplications: boolean
+  paymentOptions: CoursePaymentOptions
 }
 
 interface CourseRow {
@@ -176,6 +192,40 @@ export async function getPublicCourseBySlug(slug: string): Promise<Course | null
     [slug],
   ) as CourseRow[]
   return rows[0] ? toCourse(rows[0]) : null
+}
+
+export function courseAcceptsApplications(course: Course, now: Date = new Date()): boolean {
+  return course.status === 'open'
+    && course.applicationsEnabled
+    && (course.applicationDeadline === null || new Date(course.applicationDeadline).getTime() >= now.getTime())
+    && (course.remainingCapacity === null || course.remainingCapacity > 0)
+}
+
+function toApplicationCourse(course: Course, now: Date): ApplicationCourse {
+  return {
+    id: course.id,
+    slug: course.slug,
+    title: course.title,
+    shortTitle: course.shortTitle,
+    status: course.status,
+    applicationsEnabled: course.applicationsEnabled,
+    applicationDeadline: course.applicationDeadline,
+    maxCapacity: course.maxCapacity,
+    currentHeadcount: course.currentHeadcount,
+    remainingCapacity: course.remainingCapacity,
+    acceptingApplications: courseAcceptsApplications(course, now),
+    paymentOptions: buildCoursePaymentOptions(course, now),
+  }
+}
+
+export async function getApplicationCourseBySlug(slug: string, now: Date = new Date()): Promise<ApplicationCourse | null> {
+  const course = await getPublicCourseBySlug(slug)
+  return course ? toApplicationCourse(course, now) : null
+}
+
+export async function getApplicationCourseById(id: string, now: Date = new Date()): Promise<ApplicationCourse | null> {
+  const course = await getCourseById(id)
+  return course ? toApplicationCourse(course, now) : null
 }
 
 function courseValues(input: CourseInput): unknown[] {

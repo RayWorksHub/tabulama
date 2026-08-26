@@ -4,13 +4,16 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { requireAdmin } from '@/lib/admin-auth'
 import { createTestApplication } from '@/lib/application-repository'
+import { z } from 'zod'
 
-export async function createTestApplicationAction(): Promise<void> {
+export async function createTestApplicationAction(formData: FormData): Promise<void> {
   await requireAdmin('/admin/jelentkezok')
+  const courseId = z.string().trim().min(1).max(120).safeParse(formData.get('courseId'))
+  if (!courseId.success) redirect('/admin/jelentkezok?error=test_create_failed')
 
   let applicationId: string
   try {
-    applicationId = await createTestApplication()
+    applicationId = await createTestApplication(courseId.data)
   } catch {
     console.error('[TabuLama] A TESZT jelentkezés nem hozható létre.')
     redirect('/admin/jelentkezok?error=test_create_failed')

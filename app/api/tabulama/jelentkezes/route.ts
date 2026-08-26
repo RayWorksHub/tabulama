@@ -3,11 +3,13 @@ import { buildApplicationSchema } from '@/lib/tabulama-application-schema'
 import { sendInternalNotification, sendApplicantConfirmation } from '@/lib/tabulama-email'
 import { generateApplicationId } from '@/lib/tabulama-config'
 import {
+  CourseApplicationError,
   consumeRateLimit,
   hashRequestIp,
   saveApplication,
 } from '@/lib/application-repository'
 import { DatabaseNotConfiguredError } from '@/lib/database'
+import type { ApplicationPricing } from '@/lib/course-payment-options'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -56,6 +58,7 @@ export async function POST(req: NextRequest) {
   }
 
   const requestIpHash = hashRequestIp(clientIp(req))
+  let pricing: ApplicationPricing
 
   try {
     const allowed = await consumeRateLimit(
@@ -70,8 +73,14 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    await saveApplication(data, meta, requestIpHash)
+    pricing = await saveApplication(data, meta, requestIpHash)
   } catch (error) {
+    if (error instanceof CourseApplicationError) {
+      const message = error.code === 'payment_option_unavailable'
+        ? 'A kiválasztott fizetési konstrukció már nem érhető el. Kérjük, válassz másikat.'
+        : 'Erre a kurzusra jelenleg nem lehet jelentkezést leadni.'
+      return NextResponse.json({ ok: false, message }, { status: 409 })
+    }
     const reason = error instanceof DatabaseNotConfiguredError ? 'nincs konfigurálva' : 'adatbázishiba'
     console.error(`[TabuLama] Jelentkezés mentése sikertelen (${applicationId}, ${reason}).`)
     return NextResponse.json(
@@ -85,9 +94,9 @@ export async function POST(req: NextRequest) {
   }
 
   // Az adatbázis a mérvadó; az e-mail-küldés külön hibája nem veszít jelentkezést.
-  await Promise.all([
-    sendInternalNotification(data, meta),
-    sendApplicantConfirmation(data, meta),
+  await Promise.allSettled([
+    sendInternalNotification(data, meta, pricing),
+    sendApplicantConfirmation(data, meta, pricing),
   ])
 
   return NextResponse.json({ ok: true, applicationId })

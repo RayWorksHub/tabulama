@@ -2,18 +2,22 @@ import 'server-only'
 
 import { createHash, randomUUID } from 'node:crypto'
 import { getSql } from '@/lib/database'
-import { packages, provider } from '@/lib/tabulama-config'
+import { provider } from '@/lib/tabulama-config'
 import { buildApplicationSchema, type ApplicationData } from '@/lib/tabulama-application-schema'
 import type { ApplicationMeta } from '@/lib/tabulama-email'
 import type { ApplicationStatus, PaymentMethod } from '@/lib/admin-display'
+import { getApplicationCourseById } from '@/lib/course-repository'
+import {
+  pricingForApplication,
+  type ApplicationPricing,
+  type CoursePaymentOption,
+} from '@/lib/course-payment-options'
 import {
   canRecordPayment,
   nextPaymentDueAt,
   paymentItemState,
   paymentPlanState,
 } from '@/lib/payment-calculations'
-
-const DEFAULT_COURSE_ID = 'course-python-2026'
 
 export interface ApplicationListItem {
   id: string
@@ -201,8 +205,7 @@ interface PaymentScheduleItem {
   dueAt: string | null
 }
 
-function buildPaymentSchedule(packageKey: ApplicationData['packageKey']): PaymentScheduleItem[] {
-  const selectedPackage = packages[packageKey]
+function buildPaymentSchedule(selectedPackage: CoursePaymentOption): PaymentScheduleItem[] {
   const count = selectedPackage.installmentCount ?? 1
   const regularAmount = selectedPackage.installmentAmount ?? selectedPackage.total
 
@@ -212,8 +215,15 @@ function buildPaymentSchedule(packageKey: ApplicationData['packageKey']): Paymen
       index === count - 1
         ? selectedPackage.total - regularAmount * (count - 1)
         : regularAmount,
-    dueAt: index === 0 ? selectedPackage.paymentDeadline : null,
+    dueAt: selectedPackage.dueDates[index] ?? null,
   }))
+}
+
+export class CourseApplicationError extends Error {
+  constructor(public readonly code: 'course_not_found' | 'course_unavailable' | 'payment_option_unavailable') {
+    super(code)
+    this.name = 'CourseApplicationError'
+  }
 }
 
 function contactEmail(row: ApplicationRow): string {
@@ -273,16 +283,21 @@ export async function saveApplication(
   data: ApplicationData,
   meta: ApplicationMeta,
   requestIpHash: string,
-): Promise<void> {
+): Promise<ApplicationPricing> {
   const sql = getSql()
-  const selectedPackage = packages[data.packageKey]
+  const course = await getApplicationCourseById(data.courseId, meta.receivedAt)
+  if (!course) throw new CourseApplicationError('course_not_found')
+  if (!course.acceptingApplications) throw new CourseApplicationError('course_unavailable')
+  const selectedPackage = course.paymentOptions[data.packageKey]
+  if (!selectedPackage?.available) throw new CourseApplicationError('payment_option_unavailable')
   const billingAddress = `${data.billingZip} ${data.billingCity}, ${data.billingAddress}`
   const paymentPlanId = randomUUID()
-  const schedule = buildPaymentSchedule(data.packageKey)
+  const schedule = buildPaymentSchedule(selectedPackage)
   const createdAt = meta.receivedAt.toISOString()
 
-  await sql.transaction([
-    sql.query(
+  try {
+    await sql.transaction([
+      sql.query(
       `INSERT INTO applications (
          id, course_id, participant_name, participant_birth_date,
          participant_email, participant_phone, guardian_name, guardian_email,
@@ -297,7 +312,7 @@ export async function saveApplication(
        )`,
       [
         meta.applicationId,
-        DEFAULT_COURSE_ID,
+        course.id,
         data.participantName,
         data.participantBirthDate,
         data.participantEmail ?? null,
@@ -321,32 +336,42 @@ export async function saveApplication(
         JSON.stringify(data),
         createdAt,
       ],
-    ),
-    sql.query(
+      ),
+      sql.query(
       `INSERT INTO status_history (
          id, entity_type, entity_id, from_status, to_status, note, created_at
        ) VALUES ($1, 'application', $2, NULL, 'new', 'Jelentkezés beérkezett.', $3::timestamptz)`,
       [randomUUID(), meta.applicationId, createdAt],
-    ),
-    sql.query(
+      ),
+      sql.query(
       `INSERT INTO payment_plans (
          id, application_id, total_amount_huf, installment_count, status, created_at, updated_at
        ) VALUES ($1, $2, $3, $4, 'pending', $5::timestamptz, $5::timestamptz)`,
       [paymentPlanId, meta.applicationId, selectedPackage.total, schedule.length, createdAt],
-    ),
-    ...schedule.map((item) =>
-      sql.query(
+      ),
+      ...schedule.map((item) =>
+        sql.query(
         `INSERT INTO payment_items (
            id, payment_plan_id, position, amount_huf, due_at, status, created_at, updated_at
          ) VALUES ($1, $2, $3, $4, $5::timestamptz, 'pending', $6::timestamptz, $6::timestamptz)`,
         [randomUUID(), paymentPlanId, item.position, item.amountHuf, item.dueAt, createdAt],
+        ),
       ),
-    ),
-  ])
+    ])
+  } catch (error) {
+    if (/course_(?:unavailable|full)/.test(String(error))) {
+      throw new CourseApplicationError('course_unavailable')
+    }
+    throw error
+  }
+
+  return pricingForApplication(course.title, selectedPackage)
 }
 
-export async function createTestApplication(): Promise<string> {
+export async function createTestApplication(courseId: string): Promise<string> {
   const sql = getSql()
+  const course = await getApplicationCourseById(courseId)
+  if (!course) throw new CourseApplicationError('course_not_found')
   const now = new Date()
   const createdAt = now.toISOString()
   const datePart = new Intl.DateTimeFormat('en-CA', {
@@ -359,6 +384,7 @@ export async function createTestApplication(): Promise<string> {
   const paymentPlanId = randomUUID()
   const paymentItemId = randomUUID()
   const testData = buildApplicationSchema(now).parse({
+    courseId,
     packageKey: 'standard',
     applicantType: 'self',
     participantName: 'TESZT Jelentkező',
@@ -397,7 +423,7 @@ export async function createTestApplication(): Promise<string> {
        )`,
       [
         applicationId,
-        DEFAULT_COURSE_ID,
+        courseId,
         testData.participantName,
         testData.participantBirthDate,
         testData.participantEmail,
