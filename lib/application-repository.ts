@@ -499,8 +499,9 @@ export async function createTestApplication(courseId: string): Promise<string> {
   return applicationId
 }
 
-export async function listApplications(limit = 100): Promise<ApplicationListItem[]> {
+export async function listApplications(limit = 100, search = ''): Promise<ApplicationListItem[]> {
   const sql = getSql()
+  const query = search.trim().toLowerCase()
   const rows = (await sql.query(
     `SELECT
        a.id, a.participant_name, a.participant_birth_date,
@@ -512,9 +513,13 @@ export async function listApplications(limit = 100): Promise<ApplicationListItem
        a.submitted_data, a.created_at, c.short_title AS course_title
      FROM applications a
      JOIN courses c ON c.id = a.course_id
+     WHERE $2 = '' OR lower(a.id) LIKE '%' || $2 || '%'
+       OR lower(a.participant_name) LIKE '%' || $2 || '%'
+       OR lower(coalesce(a.participant_email, '')) LIKE '%' || $2 || '%'
+       OR lower(coalesce(a.guardian_email, '')) LIKE '%' || $2 || '%'
      ORDER BY a.created_at DESC
      LIMIT $1`,
-    [Math.min(Math.max(limit, 1), 500)],
+    [Math.min(Math.max(limit, 1), 500), query],
   )) as ApplicationRow[]
 
   return rows.map(toListItem)

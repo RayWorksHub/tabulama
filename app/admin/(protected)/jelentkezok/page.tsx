@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ChevronRight, FlaskConical } from 'lucide-react'
+import { ChevronRight, FlaskConical, Search } from 'lucide-react'
 import { listApplications } from '@/lib/application-repository'
 import { formatAdminDate } from '@/lib/admin-display'
 import { formatHUF } from '@/lib/tabulama-config'
@@ -12,10 +12,10 @@ export const dynamic = 'force-dynamic'
 export default async function ApplicationsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>
+  searchParams: Promise<{ error?: string; q?: string }>
 }) {
   const feedback = await searchParams
-  const [applications, courses] = await Promise.all([listApplications(), listCourses()])
+  const [applications, courses] = await Promise.all([listApplications(100, feedback.q ?? ''), listCourses()])
 
   return (
     <div className="mx-auto max-w-7xl">
@@ -43,6 +43,15 @@ export default async function ApplicationsPage({
           A TESZT jelentkezés nem hozható létre. Próbáld újra.
         </p>
       ) : null}
+
+      <form className="mt-6 flex max-w-xl gap-2">
+        <label className="relative flex-1">
+          <span className="sr-only">Jelentkező keresése</span>
+          <Search className="pointer-events-none absolute left-3 top-3 h-5 w-5 text-slate-400" />
+          <input name="q" defaultValue={feedback.q ?? ''} placeholder="Név, e-mail vagy TL-azonosító" className="min-h-11 w-full rounded-xl border border-slate-300 bg-white pl-10 pr-4 text-sm outline-none focus:border-[#9b6e2f]" />
+        </label>
+        <button type="submit" className="rounded-xl bg-[#1b2430] px-5 text-sm font-bold text-white">Keresés</button>
+      </form>
 
       <div className="mt-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         {applications.length === 0 ? (

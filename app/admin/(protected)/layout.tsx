@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import Image from 'next/image'
-import { BookOpen, LayoutDashboard, LogOut, Users } from 'lucide-react'
+import { BookOpen, GraduationCap, LayoutDashboard, LogOut, Users } from 'lucide-react'
 import { requireAdmin } from '@/lib/admin-auth'
 
 export const dynamic = 'force-dynamic'
@@ -8,6 +8,7 @@ export const dynamic = 'force-dynamic'
 const navItems = [
   { href: '/admin', label: 'Áttekintés', icon: LayoutDashboard },
   { href: '/admin/jelentkezok', label: 'Jelentkezők', icon: Users },
+  { href: '/admin/diakok', label: 'Diákok', icon: GraduationCap },
   { href: '/admin/kurzusok', label: 'Kurzusok', icon: BookOpen },
 ]
 
@@ -22,7 +23,7 @@ export default async function ProtectedAdminLayout({ children }: { children: Rea
             <Image src="/tabulama/tabulama-mark.webp" alt="" width={42} height={42} priority />
             <span className="font-bold">TabuLama Admin</span>
           </Link>
-          <form action="/api/admin/session/logout" method="post" className="lg:hidden">
+          <form action="/api/session/logout" method="post" className="lg:hidden">
             <button type="submit" aria-label="Kilépés" className="rounded-lg p-2 text-slate-300 hover:bg-white/10 hover:text-white">
               <LogOut className="h-5 w-5" />
             </button>
@@ -44,7 +45,7 @@ export default async function ProtectedAdminLayout({ children }: { children: Rea
 
         <div className="mt-8 hidden border-t border-white/10 pt-5 lg:block">
           <p className="truncate text-xs text-slate-400">{session.email}</p>
-          <form action="/api/admin/session/logout" method="post" className="mt-3">
+          <form action="/api/session/logout" method="post" className="mt-3">
             <button type="submit" className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-slate-300 hover:bg-white/10 hover:text-white">
               <LogOut className="h-4 w-4" />
               Kilépés

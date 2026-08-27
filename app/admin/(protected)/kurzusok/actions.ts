@@ -6,8 +6,22 @@ import { z } from 'zod'
 import { requireAdmin } from '@/lib/admin-auth'
 import { COURSE_STATUSES, createCourse, updateCourse, updateCourseStatus } from '@/lib/course-repository'
 import { courseFormSchema, parseInstallmentDueDates } from '@/lib/course-form-schema'
+import {
+  createCourseModule,
+  moveCourseModule,
+  updateCourseModule,
+} from '@/lib/student-repository'
 
 const idSchema = z.string().trim().min(1).max(120)
+const moduleSchema = z.object({
+  courseId: idSchema,
+  moduleId: idSchema.optional(),
+  title: z.string().trim().min(2).max(160),
+  description: z.string().trim().max(1000).optional(),
+  topic: z.string().trim().max(200).optional(),
+  plannedDate: z.union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/), z.literal('')]),
+  isActive: z.boolean(),
+})
 
 function coursePath(id?: string): string {
   return id ? `/admin/kurzusok/${encodeURIComponent(id)}` : '/admin/kurzusok/uj'
@@ -75,4 +89,59 @@ export async function archiveCourseAction(formData: FormData): Promise<void> {
   revalidatePath('/', 'layout')
   revalidatePath('/admin/kurzusok')
   redirect('/admin/kurzusok?success=archived')
+}
+
+export async function saveCourseModuleAction(formData: FormData): Promise<void> {
+  const parsed = moduleSchema.safeParse({
+    courseId: formData.get('courseId'),
+    moduleId: String(formData.get('moduleId') ?? '') || undefined,
+    title: formData.get('title'),
+    description: formData.get('description'),
+    topic: formData.get('topic'),
+    plannedDate: formData.get('plannedDate'),
+    isActive: formData.get('isActive') === 'on',
+  })
+  const returnTo = parsed.success ? coursePath(parsed.data.courseId) : '/admin/kurzusok'
+  await requireAdmin(returnTo)
+  if (!parsed.success) redirect(`${returnTo}?error=module_invalid`)
+  const input = {
+    courseId: parsed.data.courseId,
+    title: parsed.data.title,
+    description: parsed.data.description || null,
+    topic: parsed.data.topic || null,
+    plannedDate: parsed.data.plannedDate || null,
+    isActive: parsed.data.isActive,
+  }
+  try {
+    if (parsed.data.moduleId) await updateCourseModule({ id: parsed.data.moduleId, ...input })
+    else await createCourseModule(input)
+  } catch {
+    redirect(`${returnTo}?error=module_save_failed`)
+  }
+  revalidatePath(returnTo)
+  revalidatePath('/portal')
+  redirect(`${returnTo}?success=module_saved`)
+}
+
+export async function moveCourseModuleAction(formData: FormData): Promise<void> {
+  const parsed = z.object({
+    courseId: idSchema,
+    moduleId: idSchema,
+    direction: z.enum(['up', 'down']),
+  }).safeParse({
+    courseId: formData.get('courseId'),
+    moduleId: formData.get('moduleId'),
+    direction: formData.get('direction'),
+  })
+  const returnTo = parsed.success ? coursePath(parsed.data.courseId) : '/admin/kurzusok'
+  await requireAdmin(returnTo)
+  if (!parsed.success) redirect(`${returnTo}?error=module_invalid`)
+  try {
+    await moveCourseModule(parsed.data.moduleId, parsed.data.courseId, parsed.data.direction)
+  } catch {
+    redirect(`${returnTo}?error=module_save_failed`)
+  }
+  revalidatePath(returnTo)
+  revalidatePath('/portal')
+  redirect(`${returnTo}?success=module_saved`)
 }
