@@ -479,7 +479,7 @@ export async function sendStudentActivationEmail(
   if (!transporter || !input.recipient) {
     return { status: 'skipped', detail: 'Az aktiváló e-mail küldése nincs konfigurálva.' }
   }
-  const subject = 'Aktiváld a TabuLama diákfiókodat'
+  const subject = `TabuLama diákfiók aktiválása – ${input.studentNumber}`
   const rows: Row[] = [
     { label: 'Diákazonosító', value: input.studentNumber },
     { label: 'Kurzus', value: input.courseTitle },
@@ -500,8 +500,8 @@ export async function sendStudentActivationEmail(
     subject,
     `<p>Kedves ${escapeHtml(input.studentName)}!</p>
      <p>Üdvözlünk a ${escapeHtml(provider.brandName)} diákjai között! Elkészült a saját diákfiókod.</p>
-     ${renderRowsHtml(rows)}
      <p style="margin:24px 0;"><a href="${escapeHtml(input.activationUrl)}" style="display:inline-block;background:#bd8b3c;color:#1b2430;text-decoration:none;font-weight:800;padding:12px 18px;border-radius:10px;">Fiók aktiválása</a></p>
+     ${renderRowsHtml(rows)}
      <p>A link egyszer használható, és a fenti időpontig érvényes.</p>
      <p>Kérdés esetén írj a <a href="mailto:${escapeHtml(provider.email)}">${escapeHtml(provider.email)}</a> címre.</p>`,
   )
