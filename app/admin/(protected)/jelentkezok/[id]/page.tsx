@@ -60,6 +60,7 @@ const errorMessages: Record<string, string> = {
   no_change: 'Válassz másik státuszt, vagy adj meg megjegyzést.',
   save_failed: 'A módosítás most nem menthető. Próbáld újra.',
   email_send_failed: 'A rendszerlevél nem küldhető el. Az eredmény az e-mail státuszoknál látható.',
+  activation_email_failed: 'A beiratkozás elkészült, de az aktiváló e-mail nem kézbesíthető. A diák adatlapjáról újraküldhető.',
 }
 
 const emailEventLabels: Record<ApplicationWorkflowEmailEvent, string> = {

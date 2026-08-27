@@ -19,10 +19,15 @@ import {
 } from '@/lib/admin-display'
 import {
   sendApplicationWorkflowEmail,
+  sendStudentActivationEmail,
   type EmailResult,
   type ApplicationWorkflowEmailEvent,
 } from '@/lib/tabulama-email'
-import { packages } from '@/lib/tabulama-config'
+import { packages, provider } from '@/lib/tabulama-config'
+import {
+  completeStudentEnrollment,
+  recordAuthTokenEmailResult,
+} from '@/lib/student-repository'
 
 const applicationIdSchema = z.string().trim().min(1).max(80)
 
@@ -156,12 +161,37 @@ export async function updateApplicationStatusAction(formData: FormData): Promise
 
   let errorKey: string | null = null
   let statusChanged = false
+  let activationEmailFailed = false
   try {
-    statusChanged = await updateApplicationStatus(
-      parsed.data.applicationId,
-      parsed.data.status,
-      parsed.data.note || null,
-    )
+    if (parsed.data.status === 'enrolled') {
+      const provision = await completeStudentEnrollment(
+        parsed.data.applicationId,
+        parsed.data.note || null,
+      )
+      statusChanged = provision.statusChanged
+      if (provision.activation) {
+        const activationUrl = new URL(
+          `/portal/aktivalas/${provision.activation.rawToken}`,
+          provider.website,
+        ).toString()
+        const activationResult = await sendStudentActivationEmail({
+          recipient: provision.email,
+          studentName: provision.participantName,
+          studentNumber: provision.studentNumber,
+          courseTitle: provision.courseTitle,
+          activationUrl,
+          expiresAt: provision.activation.expiresAt,
+        })
+        await recordAuthTokenEmailResult(provision.activation.tokenHash, activationResult)
+        activationEmailFailed = activationResult.status !== 'sent'
+      }
+    } else {
+      statusChanged = await updateApplicationStatus(
+        parsed.data.applicationId,
+        parsed.data.status,
+        parsed.data.note || null,
+      )
+    }
   } catch (error) {
     errorKey = mutationErrorKey(error)
   }
@@ -172,7 +202,8 @@ export async function updateApplicationStatusAction(formData: FormData): Promise
     await notifyApplication(parsed.data.applicationId, workflowEvent)
   }
   revalidatePath(returnTo)
-  redirect(`${returnTo}?success=status_updated`)
+  revalidatePath('/admin/diakok')
+  redirect(`${returnTo}?success=status_updated${activationEmailFailed ? '&error=activation_email_failed' : ''}`)
 }
 
 export async function recordApplicationPaymentAction(formData: FormData): Promise<void> {

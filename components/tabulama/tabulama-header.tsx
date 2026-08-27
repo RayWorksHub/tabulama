@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Menu, X } from 'lucide-react'
+import { LogIn, Menu, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { buttonVariants } from '@/components/ui/button'
 import { TabuLamaLogo } from '@/components/tabulama/tabulama-logo'
@@ -44,7 +44,14 @@ export function TabuLamaHeader() {
           ))}
         </nav>
 
-        <div className="hidden md:block">
+        <div className="hidden items-center gap-2 md:flex">
+          <Link
+            href="/login"
+            className={buttonVariants({ variant: 'outline', size: 'lg' })}
+          >
+            <LogIn className="mr-2 h-4 w-4" />
+            Bejelentkezés
+          </Link>
           <Link
             href="/jelentkezes"
             className={buttonVariants({ size: 'lg' })}
@@ -83,9 +90,16 @@ export function TabuLamaHeader() {
               </Link>
             ))}
             <Link
+              href="/login"
+              onClick={() => setOpen(false)}
+              className={cn(buttonVariants({ variant: 'outline', size: 'lg' }), 'mt-2')}
+            >
+              Bejelentkezés
+            </Link>
+            <Link
               href="/jelentkezes"
               onClick={() => setOpen(false)}
-              className={cn(buttonVariants({ size: 'lg' }), 'mt-2')}
+              className={buttonVariants({ size: 'lg' })}
             >
               Jelentkezés
             </Link>

@@ -50,6 +50,22 @@ export interface ApplicationWorkflowEmailInput {
   isTest: boolean
 }
 
+export interface StudentActivationEmailInput {
+  recipient: string
+  studentName: string
+  studentNumber: string
+  courseTitle: string
+  activationUrl: string
+  expiresAt: string
+}
+
+export interface PasswordResetEmailInput {
+  recipient: string
+  fullName: string
+  resetUrl: string
+  expiresAt: string
+}
+
 const payerLabels: Record<string, string> = {
   participant: 'A résztvevő (nagykorú)',
   guardian: 'Törvényes képviselő',
@@ -453,5 +469,97 @@ export async function sendApplicationWorkflowEmail(
   } catch {
     console.log(`[TabuLama] Folyamatértesítő kivétel (${application.applicationId}, ${event})`)
     return { status: 'error', detail: 'A folyamatértesítő kézbesítése nem sikerült.' }
+  }
+}
+
+export async function sendStudentActivationEmail(
+  input: StudentActivationEmailInput,
+): Promise<EmailResult> {
+  const transporter = createTransporter()
+  if (!transporter || !input.recipient) {
+    return { status: 'skipped', detail: 'Az aktiváló e-mail küldése nincs konfigurálva.' }
+  }
+  const subject = 'Aktiváld a TabuLama diákfiókodat'
+  const rows: Row[] = [
+    { label: 'Diákazonosító', value: input.studentNumber },
+    { label: 'Kurzus', value: input.courseTitle },
+    { label: 'Link érvényessége', value: formatHuDateTime(input.expiresAt) },
+  ]
+  const text = [
+    `Kedves ${input.studentName}!`,
+    '',
+    `Üdvözlünk a ${provider.brandName} diákjai között! Elkészült a saját diákfiókod.`,
+    renderText(rows),
+    '',
+    `Fiók aktiválása és jelszó beállítása: ${input.activationUrl}`,
+    'A link egyszer használható, és a fenti időpontig érvényes.',
+    '',
+    `Kérdés esetén írj a ${provider.email} címre.`,
+  ].join('\n')
+  const html = renderShell(
+    subject,
+    `<p>Kedves ${escapeHtml(input.studentName)}!</p>
+     <p>Üdvözlünk a ${escapeHtml(provider.brandName)} diákjai között! Elkészült a saját diákfiókod.</p>
+     ${renderRowsHtml(rows)}
+     <p style="margin:24px 0;"><a href="${escapeHtml(input.activationUrl)}" style="display:inline-block;background:#bd8b3c;color:#1b2430;text-decoration:none;font-weight:800;padding:12px 18px;border-radius:10px;">Fiók aktiválása</a></p>
+     <p>A link egyszer használható, és a fenti időpontig érvényes.</p>
+     <p>Kérdés esetén írj a <a href="mailto:${escapeHtml(provider.email)}">${escapeHtml(provider.email)}</a> címre.</p>`,
+  )
+  try {
+    await transporter.sendMail({
+      from: FROM(),
+      to: input.recipient,
+      replyTo: provider.email,
+      subject,
+      text,
+      html,
+    })
+    return { status: 'sent', detail: 'A diákfiók aktiváló e-mail elküldve.' }
+  } catch {
+    console.error('[TabuLama] Diákfiók aktiváló e-mail küldése sikertelen.')
+    return { status: 'error', detail: 'A diákfiók aktiváló e-mail nem kézbesíthető.' }
+  }
+}
+
+export async function sendPasswordResetEmail(
+  input: PasswordResetEmailInput,
+): Promise<EmailResult> {
+  const transporter = createTransporter()
+  if (!transporter || !input.recipient) {
+    return { status: 'skipped', detail: 'A jelszó-visszaállító e-mail küldése nincs konfigurálva.' }
+  }
+  const subject = 'TabuLama jelszó-visszaállítás'
+  const text = [
+    `Kedves ${input.fullName}!`,
+    '',
+    'Jelszó-visszaállítást kértek a TabuLama-fiókodhoz.',
+    `Új jelszó beállítása: ${input.resetUrl}`,
+    `A link egyszer használható és eddig érvényes: ${formatHuDateTime(input.expiresAt)}.`,
+    'Ha nem te kérted, nincs további teendőd.',
+    '',
+    `Kérdés esetén írj a ${provider.email} címre.`,
+  ].join('\n')
+  const html = renderShell(
+    subject,
+    `<p>Kedves ${escapeHtml(input.fullName)}!</p>
+     <p>Jelszó-visszaállítást kértek a TabuLama-fiókodhoz.</p>
+     <p style="margin:24px 0;"><a href="${escapeHtml(input.resetUrl)}" style="display:inline-block;background:#bd8b3c;color:#1b2430;text-decoration:none;font-weight:800;padding:12px 18px;border-radius:10px;">Új jelszó beállítása</a></p>
+     <p>A link egyszer használható és eddig érvényes: <strong>${escapeHtml(formatHuDateTime(input.expiresAt))}</strong>.</p>
+     <p>Ha nem te kérted, nincs további teendőd.</p>
+     <p>Kérdés esetén írj a <a href="mailto:${escapeHtml(provider.email)}">${escapeHtml(provider.email)}</a> címre.</p>`,
+  )
+  try {
+    await transporter.sendMail({
+      from: FROM(),
+      to: input.recipient,
+      replyTo: provider.email,
+      subject,
+      text,
+      html,
+    })
+    return { status: 'sent', detail: 'A jelszó-visszaállító e-mail elküldve.' }
+  } catch {
+    console.error('[TabuLama] Jelszó-visszaállító e-mail küldése sikertelen.')
+    return { status: 'error', detail: 'A jelszó-visszaállító e-mail nem kézbesíthető.' }
   }
 }
