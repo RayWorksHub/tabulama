@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { consumeRateLimit, hashRequestIp } from '@/lib/application-repository'
-import { provider } from '@/lib/tabulama-config'
+import { publicAppUrl } from '@/lib/public-app-url'
 import { sendPasswordResetEmail } from '@/lib/tabulama-email'
 import { createPasswordReset, recordAuthTokenEmailResult } from '@/lib/student-repository'
 
@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
     if (allowed) {
       const reset = await createPasswordReset(email)
       if (reset) {
-        const resetUrl = new URL(`/jelszo-visszaallitas/${reset.rawToken}`, provider.website).toString()
+        const resetUrl = publicAppUrl(`/jelszo-visszaallitas/${reset.rawToken}`)
         const result = await sendPasswordResetEmail({
           recipient: reset.email,
           fullName: reset.fullName,

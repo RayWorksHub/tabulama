@@ -4,8 +4,8 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { z } from 'zod'
 import { requireAdmin } from '@/lib/admin-auth'
-import { provider } from '@/lib/tabulama-config'
 import { sendStudentActivationEmail } from '@/lib/tabulama-email'
+import { publicAppUrl } from '@/lib/public-app-url'
 import {
   createActivationForStudent,
   MODULE_PROGRESS_STATUSES,
@@ -48,10 +48,7 @@ export async function resendStudentActivationAction(formData: FormData): Promise
   try {
     const provision = await createActivationForStudent(studentId.data)
     if (!provision?.activation) redirect(`${returnTo}?error=activation_unavailable`)
-    const activationUrl = new URL(
-      `/portal/aktivalas/${provision.activation.rawToken}`,
-      provider.website,
-    ).toString()
+    const activationUrl = publicAppUrl(`/portal/aktivalas/${provision.activation.rawToken}`)
     const result = await sendStudentActivationEmail({
       recipient: provision.email,
       studentName: provision.participantName,

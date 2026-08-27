@@ -23,6 +23,7 @@ import {
   type EmailResult,
   type ApplicationWorkflowEmailEvent,
 } from '@/lib/tabulama-email'
+import { publicAppUrl } from '@/lib/public-app-url'
 import { packages, provider } from '@/lib/tabulama-config'
 import {
   completeStudentEnrollment,
@@ -170,10 +171,7 @@ export async function updateApplicationStatusAction(formData: FormData): Promise
       )
       statusChanged = provision.statusChanged
       if (provision.activation) {
-        const activationUrl = new URL(
-          `/portal/aktivalas/${provision.activation.rawToken}`,
-          provider.website,
-        ).toString()
+        const activationUrl = publicAppUrl(`/portal/aktivalas/${provision.activation.rawToken}`)
         const activationResult = await sendStudentActivationEmail({
           recipient: provision.email,
           studentName: provision.participantName,
