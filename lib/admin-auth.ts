@@ -20,9 +20,10 @@ export async function getAdminSession(): Promise<AdminSession | null> {
 }
 
 export async function requireAdmin(returnTo = '/admin'): Promise<AdminSession> {
-  const session = await getAdminSession()
+  const session = await getAuthSession()
   if (!session) redirect(`/login?next=${encodeURIComponent(sanitizeReturnTo(returnTo))}`)
-  return session
+  if (session.role === 'student') redirect('/portal')
+  return session as AdminSession
 }
 
 export function sanitizeReturnTo(value: string | null | undefined): string {
