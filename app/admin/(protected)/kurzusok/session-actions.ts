@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { requireAdmin } from '@/lib/admin-auth'
 import {
   ATTENDANCE_STATUSES,
+  SESSION_FREQUENCIES,
   SESSION_STATUSES,
   createCourseSession,
   createCourseSessionSeries,
@@ -15,16 +16,67 @@ import {
   weekStartIso,
   type AttendanceStatus,
 } from '@/lib/course-session-repository'
+import {
+  SESSION_MUTATION_SCOPES,
+  deleteManagedCourseSession,
+  updateManagedCourseSession,
+  type CourseSessionRecurrenceInput,
+} from '@/lib/course-session-management-repository'
 
 const id = z.string().trim().min(1).max(120)
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 const time = z.string().regex(/^\d{2}:\d{2}$/)
-const recurrenceFrequency = z.enum(['none', 'daily', 'weekly', 'monthly'])
+const recurrenceFrequency = z.enum(['none', ...SESSION_FREQUENCIES])
 const recurrenceEndMode = z.enum(['until', 'count'])
 
-function courseSessionsPath(courseId: string, week?: string | null): string {
-  const normalizedWeek = weekStartIso(week)
-  return `/admin/kurzusok/${encodeURIComponent(courseId)}?view=sessions&week=${normalizedWeek}`
+function courseSessionsPath(courseId: string, week?: string | null, sessionId?: string | null): string {
+  const query = new URLSearchParams({
+    view: 'sessions',
+    week: weekStartIso(week),
+  })
+  if (sessionId) query.set('session', sessionId)
+  return `/admin/kurzusok/${encodeURIComponent(courseId)}?${query.toString()}`
+}
+
+function mutationErrorCode(error: unknown): string {
+  if (!(error instanceof Error)) return 'session_save_failed'
+  if (error.message === 'session_series_history_locked') return 'session_series_history_locked'
+  if (error.message === 'session_history_confirmation_required') return 'session_history_confirmation_required'
+  if (error.message === 'session_recurrence_invalid' || error.message === 'session_series_invalid') return 'session_recurrence_invalid'
+  if (error.message === 'session_not_found') return 'session_not_found'
+  return 'session_save_failed'
+}
+
+function parseRecurrence(formData: FormData, startsOn: string): CourseSessionRecurrenceInput | null {
+  const parsed = z.object({
+    frequency: z.enum(SESSION_FREQUENCIES),
+    interval: z.coerce.number().int().min(1).max(52),
+    endMode: recurrenceEndMode,
+    untilDate: date.optional(),
+    occurrenceCount: z.coerce.number().int().min(1).max(240).optional(),
+  }).safeParse({
+    frequency: formData.get('frequency'),
+    interval: formData.get('interval') || '1',
+    endMode: formData.get('endMode'),
+    untilDate: formData.get('untilDate') || undefined,
+    occurrenceCount: formData.get('occurrenceCount') || undefined,
+  })
+
+  if (!parsed.success) return null
+  if (parsed.data.endMode === 'until' && (!parsed.data.untilDate || parsed.data.untilDate < startsOn)) return null
+  if (parsed.data.endMode === 'count' && !parsed.data.occurrenceCount) return null
+
+  const weekdays = formData.getAll('weekday')
+    .map((value) => Number(value))
+    .filter((value) => Number.isInteger(value) && value >= 1 && value <= 7)
+
+  return {
+    frequency: parsed.data.frequency,
+    interval: parsed.data.interval,
+    weekdays,
+    endsOn: parsed.data.endMode === 'until' ? parsed.data.untilDate ?? null : null,
+    occurrenceCount: parsed.data.endMode === 'count' ? parsed.data.occurrenceCount ?? null : null,
+  }
 }
 
 export async function createCourseSessionAction(formData: FormData): Promise<void> {
@@ -106,6 +158,99 @@ export async function createCourseSessionAction(formData: FormData): Promise<voi
   revalidatePath(`/admin/kurzusok/${parsed.data.courseId}`)
   revalidatePath('/portal')
   redirect(`${returnTo}&success=${parsed.data.frequency === 'none' ? 'session_saved' : 'session_series_saved'}`)
+}
+
+export async function updateManagedCourseSessionAction(formData: FormData): Promise<void> {
+  const parsed = z.object({
+    courseId: id,
+    sessionId: id,
+    week: date,
+    scope: z.enum(SESSION_MUTATION_SCOPES),
+    sessionDate: date,
+    startTime: time,
+    endTime: time,
+    title: z.string().trim().min(2).max(160),
+    note: z.string().trim().max(1000).optional(),
+  }).safeParse({
+    courseId: formData.get('courseId'),
+    sessionId: formData.get('sessionId'),
+    week: formData.get('week'),
+    scope: formData.get('scope'),
+    sessionDate: formData.get('sessionDate'),
+    startTime: formData.get('startTime'),
+    endTime: formData.get('endTime'),
+    title: formData.get('title'),
+    note: formData.get('note'),
+  })
+
+  const returnTo = parsed.success
+    ? courseSessionsPath(parsed.data.courseId, parsed.data.week, parsed.data.sessionId)
+    : '/admin/kurzusok'
+  await requireAdmin(returnTo)
+  if (!parsed.success || parsed.data.endTime <= parsed.data.startTime) redirect(`${returnTo}&error=session_invalid`)
+
+  const recurrence = parsed.data.scope === 'single' ? null : parseRecurrence(formData, parsed.data.sessionDate)
+  if (parsed.data.scope !== 'single' && !recurrence) redirect(`${returnTo}&error=session_recurrence_invalid`)
+
+  try {
+    await updateManagedCourseSession({
+      courseId: parsed.data.courseId,
+      sessionId: parsed.data.sessionId,
+      scope: parsed.data.scope,
+      sessionDate: parsed.data.sessionDate,
+      startTime: parsed.data.startTime,
+      endTime: parsed.data.endTime,
+      title: parsed.data.title,
+      note: parsed.data.note || null,
+      recurrence,
+    })
+  } catch (error) {
+    redirect(`${returnTo}&error=${mutationErrorCode(error)}`)
+  }
+
+  revalidatePath(`/admin/kurzusok/${parsed.data.courseId}`)
+  revalidatePath('/portal')
+  const success = parsed.data.scope === 'single' ? 'session_updated' : 'session_series_updated'
+  const selectedSession = parsed.data.scope === 'single' ? parsed.data.sessionId : null
+  redirect(`${courseSessionsPath(parsed.data.courseId, parsed.data.sessionDate, selectedSession)}&success=${success}`)
+}
+
+export async function deleteManagedCourseSessionAction(formData: FormData): Promise<void> {
+  const parsed = z.object({
+    courseId: id,
+    sessionId: id,
+    week: date,
+    scope: z.enum(SESSION_MUTATION_SCOPES),
+  }).safeParse({
+    courseId: formData.get('courseId'),
+    sessionId: formData.get('sessionId'),
+    week: formData.get('week'),
+    scope: formData.get('scope'),
+  })
+
+  const returnTo = parsed.success ? courseSessionsPath(parsed.data.courseId, parsed.data.week) : '/admin/kurzusok'
+  await requireAdmin(returnTo)
+  if (!parsed.success) redirect(`${returnTo}&error=session_invalid`)
+
+  try {
+    await deleteManagedCourseSession({
+      courseId: parsed.data.courseId,
+      sessionId: parsed.data.sessionId,
+      scope: parsed.data.scope,
+      confirmHistory: formData.get('confirmHistory') === 'on',
+    })
+  } catch (error) {
+    redirect(`${returnTo}&error=${mutationErrorCode(error)}`)
+  }
+
+  revalidatePath(`/admin/kurzusok/${parsed.data.courseId}`)
+  revalidatePath('/portal')
+  const success = parsed.data.scope === 'single'
+    ? 'session_deleted'
+    : parsed.data.scope === 'future'
+      ? 'session_future_deleted'
+      : 'session_series_deleted'
+  redirect(`${returnTo}&success=${success}`)
 }
 
 export async function updateCourseSessionStatusAction(formData: FormData): Promise<void> {
