@@ -8,6 +8,7 @@ import {
   ATTENDANCE_STATUSES,
   SESSION_STATUSES,
   createCourseSession,
+  createCourseSessionSeries,
   markAllSessionPresent,
   saveSessionAttendance,
   updateCourseSessionStatus,
@@ -18,6 +19,8 @@ import {
 const id = z.string().trim().min(1).max(120)
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 const time = z.string().regex(/^\d{2}:\d{2}$/)
+const recurrenceFrequency = z.enum(['none', 'daily', 'weekly', 'monthly'])
+const recurrenceEndMode = z.enum(['until', 'count'])
 
 function courseSessionsPath(courseId: string, week?: string | null): string {
   const normalizedWeek = weekStartIso(week)
@@ -33,6 +36,11 @@ export async function createCourseSessionAction(formData: FormData): Promise<voi
     endTime: time,
     title: z.string().trim().min(2).max(160),
     note: z.string().trim().max(1000).optional(),
+    frequency: recurrenceFrequency,
+    interval: z.coerce.number().int().min(1).max(52),
+    endMode: recurrenceEndMode.optional(),
+    untilDate: date.optional(),
+    occurrenceCount: z.coerce.number().int().min(1).max(240).optional(),
   }).safeParse({
     courseId: formData.get('courseId'),
     week: formData.get('week'),
@@ -41,28 +49,63 @@ export async function createCourseSessionAction(formData: FormData): Promise<voi
     endTime: formData.get('endTime'),
     title: formData.get('title'),
     note: formData.get('note'),
+    frequency: formData.get('frequency') ?? 'none',
+    interval: formData.get('interval') || '1',
+    endMode: formData.get('endMode') || undefined,
+    untilDate: formData.get('untilDate') || undefined,
+    occurrenceCount: formData.get('occurrenceCount') || undefined,
   })
 
   const returnTo = parsed.success ? courseSessionsPath(parsed.data.courseId, parsed.data.week) : '/admin/kurzusok'
   await requireAdmin(returnTo)
   if (!parsed.success || parsed.data.endTime <= parsed.data.startTime) redirect(`${returnTo}&error=session_invalid`)
 
+  const weekdays = formData.getAll('weekday')
+    .map((value) => Number(value))
+    .filter((value) => Number.isInteger(value) && value >= 1 && value <= 7)
+
+  if (parsed.data.frequency !== 'none') {
+    if (!parsed.data.endMode) redirect(`${returnTo}&error=session_recurrence_invalid`)
+    if (parsed.data.endMode === 'until' && (!parsed.data.untilDate || parsed.data.untilDate < parsed.data.sessionDate)) {
+      redirect(`${returnTo}&error=session_recurrence_invalid`)
+    }
+    if (parsed.data.endMode === 'count' && !parsed.data.occurrenceCount) {
+      redirect(`${returnTo}&error=session_recurrence_invalid`)
+    }
+  }
+
   try {
-    await createCourseSession({
-      courseId: parsed.data.courseId,
-      sessionDate: parsed.data.sessionDate,
-      startTime: parsed.data.startTime,
-      endTime: parsed.data.endTime,
-      title: parsed.data.title,
-      note: parsed.data.note || null,
-    })
+    if (parsed.data.frequency === 'none') {
+      await createCourseSession({
+        courseId: parsed.data.courseId,
+        sessionDate: parsed.data.sessionDate,
+        startTime: parsed.data.startTime,
+        endTime: parsed.data.endTime,
+        title: parsed.data.title,
+        note: parsed.data.note || null,
+      })
+    } else {
+      await createCourseSessionSeries({
+        courseId: parsed.data.courseId,
+        startsOn: parsed.data.sessionDate,
+        startTime: parsed.data.startTime,
+        endTime: parsed.data.endTime,
+        title: parsed.data.title,
+        note: parsed.data.note || null,
+        frequency: parsed.data.frequency,
+        interval: parsed.data.interval,
+        weekdays,
+        endsOn: parsed.data.endMode === 'until' ? parsed.data.untilDate ?? null : null,
+        occurrenceCount: parsed.data.endMode === 'count' ? parsed.data.occurrenceCount ?? null : null,
+      })
+    }
   } catch {
     redirect(`${returnTo}&error=session_save_failed`)
   }
 
   revalidatePath(`/admin/kurzusok/${parsed.data.courseId}`)
   revalidatePath('/portal')
-  redirect(`${returnTo}&success=session_saved`)
+  redirect(`${returnTo}&success=${parsed.data.frequency === 'none' ? 'session_saved' : 'session_series_saved'}`)
 }
 
 export async function updateCourseSessionStatusAction(formData: FormData): Promise<void> {
