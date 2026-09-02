@@ -16,17 +16,34 @@ import {
   TrendingUp,
 } from 'lucide-react'
 import { formatAdminDay } from '@/lib/admin-display'
+import { listCourses } from '@/lib/course-repository'
 import { formatHUF } from '@/lib/tabulama-config'
 import { getAdminStudentById, MODULE_PROGRESS_STATUSES, type ModuleProgressStatus } from '@/lib/student-repository'
-import { resendStudentActivationAction, updateStudentProgressAction } from '../actions'
+import {
+  adjustStudentProgressAction,
+  assignStudentCourseAction,
+  resendStudentActivationAction,
+  updateStudentProgressAction,
+} from '../actions'
 
 export const dynamic = 'force-dynamic'
 
 const accountLabels = { pending: 'Nincs aktiválva', active: 'Aktív', disabled: 'Inaktív' }
 const progressLabels: Record<ModuleProgressStatus, string> = { upcoming: 'Következik', in_progress: 'Folyamatban', completed: 'Teljesítve' }
 const enrollmentLabels: Record<string, string> = { pending: 'Függőben', active: 'Aktív', completed: 'Befejezett', withdrawn: 'Kilépett' }
-const successMessages: Record<string, string> = { progress_updated: 'A haladás frissült.', activation_sent: 'Az aktiváló e-mail elküldve.' }
-const errorMessages: Record<string, string> = { invalid_form: 'Hibás adatok.', save_failed: 'A módosítás nem menthető.', activation_unavailable: 'Aktív fiókhoz nincs szükség új aktiváló linkre.', activation_failed: 'Az aktiváló e-mail nem küldhető el.' }
+const successMessages: Record<string, string> = {
+  progress_updated: 'A haladás frissült.',
+  activation_sent: 'Az aktiváló e-mail elküldve.',
+  course_assigned: 'A diák hozzá lett rendelve a kurzushoz.',
+}
+const errorMessages: Record<string, string> = {
+  invalid_form: 'Hibás adatok.',
+  save_failed: 'A módosítás nem menthető.',
+  activation_unavailable: 'Aktív fiókhoz nincs szükség új aktiváló linkre.',
+  activation_failed: 'Az aktiváló e-mail nem küldhető el.',
+  course_full: 'A kiválasztott kurzus betelt.',
+  course_assign_failed: 'A kurzus-hozzárendelés nem sikerült.',
+}
 
 const views = [
   { id: 'overview', label: 'Áttekintés', icon: LayoutDashboard },
@@ -56,13 +73,15 @@ export default async function StudentDetailsPage({
   searchParams: Promise<{ success?: string; error?: string; view?: string; course?: string }>
 }) {
   const [{ id }, feedback] = await Promise.all([params, searchParams])
-  const student = await getAdminStudentById(id)
+  const [student, courses] = await Promise.all([getAdminStudentById(id), listCourses()])
   if (!student) notFound()
 
   const requestedView = feedback.view as ViewId | undefined
   const view: ViewId = views.some((item) => item.id === requestedView) ? requestedView! : 'overview'
   const selectedEnrollment = student.enrollments.find((item) => item.id === feedback.course) ?? student.enrollments[0] ?? null
   const activeEnrollments = student.enrollments.filter((item) => item.status === 'active')
+  const enrolledCourseIds = new Set(student.enrollments.map((item) => item.course.id))
+  const availableCourses = courses.filter((course) => course.status !== 'archived' && !enrolledCourseIds.has(course.id))
   const averageProgress = student.enrollments.length
     ? Math.round(student.enrollments.reduce((sum, item) => sum + item.progressPercent, 0) / student.enrollments.length)
     : 0
@@ -76,8 +95,8 @@ export default async function StudentDetailsPage({
         <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold">{accountLabels[student.accountStatus]}</span>
       </div>
 
-      {feedback.success ? <p role="status" className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-900">{successMessages[feedback.success]}</p> : null}
-      {feedback.error ? <p role="alert" className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-900">{errorMessages[feedback.error]}</p> : null}
+      {feedback.success ? <p role="status" className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-900">{successMessages[feedback.success] ?? 'A módosítás elmentve.'}</p> : null}
+      {feedback.error ? <p role="alert" className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-900">{errorMessages[feedback.error] ?? 'A művelet nem hajtható végre.'}</p> : null}
 
       <div className="mt-7 grid gap-6 lg:grid-cols-[235px_minmax(0,1fr)]">
         <aside className="self-start rounded-2xl border border-slate-200 bg-white p-2 shadow-sm lg:sticky lg:top-6">
@@ -110,9 +129,17 @@ export default async function StudentDetailsPage({
           ) : null}
 
           {view === 'courses' ? (
-            <div className="grid gap-4 xl:grid-cols-2">
-              {student.enrollments.map((enrollment) => <article key={enrollment.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-start justify-between gap-4"><div><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold">{enrollmentLabels[enrollment.status] ?? enrollment.status}</span><h2 className="mt-3 text-lg font-bold">{enrollment.course.title}</h2><p className="mt-1 text-sm text-slate-500">Kezdés: {enrollment.course.startDate ? formatAdminDay(enrollment.course.startDate) : '—'}</p></div><strong className="text-lg">{enrollment.progressPercent}%</strong></div><div className="mt-4 h-2.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full bg-[#bd8b3c]" style={{ width: `${enrollment.progressPercent}%` }} /></div><dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2"><div><dt className="text-slate-500">Aktuális tananyag</dt><dd className="font-semibold">{enrollment.currentModule?.title ?? 'Még nem kezdte el'}</dd></div><div><dt className="text-slate-500">Következő</dt><dd className="font-semibold">{enrollment.nextModule?.title ?? '—'}</dd></div></dl><Link href={`/admin/diakok/${student.id}?view=progress&course=${enrollment.id}`} className="mt-5 inline-flex text-sm font-bold text-[#8b642b] hover:underline">Részletes előrehaladás</Link></article>)}
-              {!student.enrollments.length ? <p className="text-sm text-slate-500">A tanuló még nincs kurzushoz rendelve.</p> : null}
+            <div className="space-y-5">
+              <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <h2 className="font-bold">Kurzus hozzárendelése</h2>
+                <p className="mt-1 text-sm text-slate-500">A diák több kurzushoz is hozzárendelhető; minden kurzushoz külön haladás tartozik.</p>
+                {availableCourses.length ? <form action={assignStudentCourseAction} className="mt-4 flex flex-col gap-3 sm:flex-row"><input type="hidden" name="studentId" value={student.id} /><select name="courseId" required defaultValue="" className="min-h-10 min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 text-sm"><option value="" disabled>Válassz kurzust…</option>{availableCourses.map((course) => <option key={course.id} value={course.id}>{course.shortTitle}</option>)}</select><button type="submit" className="rounded-lg bg-[#1b2430] px-4 py-2.5 text-sm font-bold text-white">Hozzárendelés</button></form> : <p className="mt-4 text-sm font-semibold text-slate-500">Nincs további hozzárendelhető kurzus.</p>}
+              </section>
+
+              <div className="grid gap-4 xl:grid-cols-2">
+                {student.enrollments.map((enrollment) => <article key={enrollment.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-start justify-between gap-4"><div><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold">{enrollmentLabels[enrollment.status] ?? enrollment.status}</span><h2 className="mt-3 text-lg font-bold">{enrollment.course.title}</h2><p className="mt-1 text-sm text-slate-500">Kezdés: {enrollment.course.startDate ? formatAdminDay(enrollment.course.startDate) : '—'}</p></div><strong className="text-lg">{enrollment.progressPercent}%</strong></div><div className="mt-4 h-2.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full bg-[#bd8b3c]" style={{ width: `${enrollment.progressPercent}%` }} /></div><dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2"><div><dt className="text-slate-500">Aktuális tananyag</dt><dd className="font-semibold">{enrollment.currentModule?.title ?? 'Még nem kezdte el'}</dd></div><div><dt className="text-slate-500">Következő</dt><dd className="font-semibold">{enrollment.nextModule?.title ?? '—'}</dd></div></dl><Link href={`/admin/diakok/${student.id}?view=progress&course=${enrollment.id}`} className="mt-5 inline-flex text-sm font-bold text-[#8b642b] hover:underline">Részletes előrehaladás</Link></article>)}
+                {!student.enrollments.length ? <p className="text-sm text-slate-500">A tanuló még nincs kurzushoz rendelve.</p> : null}
+              </div>
             </div>
           ) : null}
 
@@ -123,7 +150,24 @@ export default async function StudentDetailsPage({
                 <div className="mt-3 flex flex-wrap gap-2">{student.enrollments.map((enrollment) => <Link key={enrollment.id} href={`/admin/diakok/${student.id}?view=progress&course=${enrollment.id}`} className={`rounded-lg px-3 py-2 text-sm font-bold ${selectedEnrollment?.id === enrollment.id ? 'bg-[#1b2430] text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>{enrollment.course.shortTitle}</Link>)}</div>
               </section>
 
-              {selectedEnrollment ? <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-xl font-bold">{selectedEnrollment.course.title}</h2><p className="mt-1 text-sm text-slate-500">Aktuális: {selectedEnrollment.currentModule?.title ?? 'még nincs'} · Következő: {selectedEnrollment.nextModule?.title ?? 'nincs'}</p></div><strong className="text-lg">{selectedEnrollment.progressPercent}%</strong></div><div className="mt-3 h-2.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full bg-[#bd8b3c]" style={{ width: `${selectedEnrollment.progressPercent}%` }} /></div><div className="mt-6 space-y-3">{selectedEnrollment.modules.map((module) => <form key={module.id} action={updateStudentProgressAction} className="flex flex-col gap-3 rounded-xl border border-slate-200 p-4 sm:flex-row sm:items-center"><input type="hidden" name="studentId" value={student.id} /><input type="hidden" name="enrollmentId" value={selectedEnrollment.id} /><input type="hidden" name="moduleId" value={module.id} /><ProgressIcon status={module.progressStatus} /><div className="min-w-0 flex-1"><p className="font-semibold">{module.position}. {module.title}</p><p className="text-xs text-slate-500">{module.topic ?? progressLabels[module.progressStatus]}</p></div><select name="status" defaultValue={module.progressStatus} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">{MODULE_PROGRESS_STATUSES.map((status) => <option key={status} value={status}>{progressLabels[status]}</option>)}</select><button type="submit" className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-bold text-white">Mentés</button></form>)}</div></section> : <section className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500 shadow-sm">Nincs kiválasztható kurzus.</section>}
+              {selectedEnrollment ? <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-xl font-bold">{selectedEnrollment.course.title}</h2><p className="mt-1 text-sm text-slate-500">Aktuális: {selectedEnrollment.currentModule?.title ?? 'még nincs'} · Következő: {selectedEnrollment.nextModule?.title ?? 'nincs'}</p></div><strong className="text-lg">{selectedEnrollment.progressPercent}%</strong></div>
+                <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full bg-[#bd8b3c]" style={{ width: `${selectedEnrollment.progressPercent}%` }} /></div>
+
+                <div className="mt-5 grid gap-3 rounded-xl bg-slate-50 p-4 lg:grid-cols-[auto_1fr_auto] lg:items-end">
+                  <form action={adjustStudentProgressAction}>
+                    <input type="hidden" name="studentId" value={student.id} /><input type="hidden" name="enrollmentId" value={selectedEnrollment.id} /><input type="hidden" name="courseId" value={selectedEnrollment.course.id} /><input type="hidden" name="operation" value="advance" />
+                    <button type="submit" className="w-full rounded-lg bg-[#1b2430] px-4 py-2.5 text-sm font-bold text-white">Következő tananyagegységre</button>
+                  </form>
+                  <form action={adjustStudentProgressAction} className="contents">
+                    <input type="hidden" name="studentId" value={student.id} /><input type="hidden" name="enrollmentId" value={selectedEnrollment.id} /><input type="hidden" name="courseId" value={selectedEnrollment.course.id} /><input type="hidden" name="operation" value="set_current" />
+                    <label className="text-xs font-bold uppercase tracking-wide text-slate-500">Aktuális tananyagegység manuális beállítása<select name="targetModuleId" required defaultValue={selectedEnrollment.currentModule?.id ?? ''} className="mt-1.5 min-h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-normal normal-case tracking-normal text-slate-900"><option value="" disabled>Válassz tananyagegységet…</option>{selectedEnrollment.modules.map((module) => <option key={module.id} value={module.id}>{module.position}. {module.title}</option>)}</select></label>
+                    <button type="submit" className="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-900">Beállítás</button>
+                  </form>
+                </div>
+
+                <div className="mt-6 space-y-3">{selectedEnrollment.modules.map((module) => <form key={module.id} action={updateStudentProgressAction} className="flex flex-col gap-3 rounded-xl border border-slate-200 p-4 sm:flex-row sm:items-center"><input type="hidden" name="studentId" value={student.id} /><input type="hidden" name="enrollmentId" value={selectedEnrollment.id} /><input type="hidden" name="moduleId" value={module.id} /><ProgressIcon status={module.progressStatus} /><div className="min-w-0 flex-1"><p className="font-semibold">{module.position}. {module.title}</p><p className="text-xs text-slate-500">{module.topic ?? progressLabels[module.progressStatus]}</p></div><select name="status" defaultValue={module.progressStatus} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">{MODULE_PROGRESS_STATUSES.map((status) => <option key={status} value={status}>{progressLabels[status]}</option>)}</select><button type="submit" className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-bold text-white">Mentés</button></form>)}</div>
+              </section> : <section className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500 shadow-sm">Nincs kiválasztható kurzus.</section>}
             </div>
           ) : null}
 
