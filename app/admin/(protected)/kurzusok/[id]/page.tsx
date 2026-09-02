@@ -28,6 +28,7 @@ const successMessages: Record<string, string> = {
   module_saved: 'A kurzusmodul elmentve.',
   progress_updated: 'A kijelölt tanulók haladása frissült.',
   session_saved: 'Az óra adatai elmentve.',
+  session_series_saved: 'Az ismétlődő órasorozat elkészült.',
   attendance_saved: 'A jelenléti adatok elmentve.',
 }
 
@@ -40,7 +41,8 @@ const errorMessages: Record<string, string> = {
   progress_target_required: 'Konkrét tananyagegység beállításához válassz egy modult.',
   progress_save_failed: 'A csoportos haladás módosítása sikertelen.',
   session_invalid: 'Az óra adatai hibásak. Ellenőrizd a dátumot és az időpontot.',
-  session_save_failed: 'Az óra mentése sikertelen. Lehet, hogy erre az időpontra már van óra.',
+  session_recurrence_invalid: 'Az ismétlődés beállításai hibásak. Ellenőrizd a gyakoriságot és a befejezést.',
+  session_save_failed: 'Az óra vagy órasorozat mentése sikertelen.',
   attendance_invalid: 'A jelenléti adatok nem értelmezhetők.',
   attendance_save_failed: 'A jelenléti adatok mentése sikertelen.',
 }
