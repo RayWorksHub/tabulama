@@ -6,6 +6,7 @@ import { SiteChrome } from '@/components/tabulama/site-chrome'
 import './globals.css'
 import './interaction-feedback.css'
 import './workspace.css'
+import './admin-workspace-pages.css'
 
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] })
 const geistMono = Geist_Mono({
