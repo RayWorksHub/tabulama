@@ -67,9 +67,9 @@ export default async function TabuLamaHomePage() {
               Programozási alapok és vizsgafelkészítés, érthetően.
             </h1>
             <p className="mt-5 max-w-xl text-pretty text-lg leading-relaxed text-navy-foreground/75">
-              A TabuLama programozási alapozó kurzusokat, Python-képzéseket,
-              valamint ágazati alapvizsga- és érettségi felkészítést szervez
-              középiskolásoknak.
+              A TabuLama középiskolásoknak szervez programozási alapozó
+              kurzusokat, Python-képzéseket, valamint ágazati alapvizsga- és
+              érettségi felkészítést.
             </p>
             <div className="mt-8 flex flex-col gap-4 sm:flex-row">
               <Link
@@ -81,10 +81,7 @@ export default async function TabuLamaHomePage() {
               </Link>
               <Link
                 href="#modszertan"
-                className={buttonVariants({
-                  variant: 'outline',
-                  size: 'lg',
-                })}
+                className="inline-flex min-h-11 items-center justify-center rounded-full border border-navy-foreground/30 px-6 py-3 font-bold text-navy-foreground transition-colors hover:bg-navy-foreground/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-navy"
               >
                 Hogyan tanítunk?
               </Link>
