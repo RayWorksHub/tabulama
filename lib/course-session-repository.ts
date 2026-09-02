@@ -10,6 +10,9 @@ export type StoredAttendanceStatus = Exclude<AttendanceStatus, 'unmarked'>
 export const SESSION_STATUSES = ['scheduled', 'completed', 'cancelled'] as const
 export type CourseSessionStatus = (typeof SESSION_STATUSES)[number]
 
+export const SESSION_FREQUENCIES = ['daily', 'weekly', 'monthly'] as const
+export type CourseSessionFrequency = (typeof SESSION_FREQUENCIES)[number]
+
 export interface CourseSessionAttendanceStudent {
   enrollmentId: string
   studentId: string
@@ -22,6 +25,7 @@ export interface CourseSessionAttendanceStudent {
 export interface CourseSessionItem {
   id: string
   courseId: string
+  seriesId: string | null
   sessionDate: string
   startTime: string
   endTime: string
@@ -46,6 +50,20 @@ export interface StudentSessionItem {
   attendanceNote: string | null
 }
 
+export interface CreateCourseSessionSeriesInput {
+  courseId: string
+  startsOn: string
+  startTime: string
+  endTime: string
+  title: string
+  note: string | null
+  frequency: CourseSessionFrequency
+  interval: number
+  weekdays: number[]
+  endsOn: string | null
+  occurrenceCount: number | null
+}
+
 function dateOnly(value: string | Date): string {
   if (value instanceof Date) return value.toISOString().slice(0, 10)
   return value.slice(0, 10)
@@ -64,6 +82,24 @@ function parseDateParts(value: string): { year: number; month: number; day: numb
   const date = new Date(Date.UTC(year, month - 1, day))
   if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null
   return { year, month, day }
+}
+
+function weekdayNumber(dateIso: string): number {
+  const parsed = parseDateParts(dateIso)
+  if (!parsed) throw new Error('invalid_date')
+  const day = new Date(Date.UTC(parsed.year, parsed.month - 1, parsed.day)).getUTCDay()
+  return day === 0 ? 7 : day
+}
+
+function addMonthsClampedIso(dateIso: string, months: number): string {
+  const parsed = parseDateParts(dateIso)
+  if (!parsed) throw new Error('invalid_date')
+  const first = new Date(Date.UTC(parsed.year, parsed.month - 1 + months, 1))
+  const targetYear = first.getUTCFullYear()
+  const targetMonth = first.getUTCMonth()
+  const lastDay = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate()
+  const targetDay = Math.min(parsed.day, lastDay)
+  return new Date(Date.UTC(targetYear, targetMonth, targetDay)).toISOString().slice(0, 10)
 }
 
 export function weekStartIso(input?: string | null): string {
@@ -89,6 +125,54 @@ export function weekDaysIso(weekStart: string): string[] {
   return Array.from({ length: 7 }, (_, index) => addDaysIso(weekStart, index))
 }
 
+export function generateCourseSessionSeriesDates(input: {
+  startsOn: string
+  frequency: CourseSessionFrequency
+  interval: number
+  weekdays: number[]
+  endsOn: string | null
+  occurrenceCount: number | null
+}): string[] {
+  if (!parseDateParts(input.startsOn)) throw new Error('invalid_date')
+  if (input.endsOn && !parseDateParts(input.endsOn)) throw new Error('invalid_end_date')
+  const interval = Math.max(1, Math.min(52, Math.trunc(input.interval)))
+  const limit = Math.max(1, Math.min(240, input.occurrenceCount ?? 240))
+  const dates: string[] = []
+  const canAdd = (date: string) => (!input.endsOn || date <= input.endsOn) && dates.length < limit
+
+  if (input.frequency === 'daily') {
+    let cursor = input.startsOn
+    for (let index = 0; index < 240 && canAdd(cursor); index += 1) {
+      dates.push(cursor)
+      cursor = addDaysIso(cursor, interval)
+    }
+  } else if (input.frequency === 'weekly') {
+    const requestedDays = [...new Set(input.weekdays.filter((day) => Number.isInteger(day) && day >= 1 && day <= 7))].sort((a, b) => a - b)
+    const weekdays = requestedDays.length ? requestedDays : [weekdayNumber(input.startsOn)]
+    const firstWeek = weekStartIso(input.startsOn)
+    for (let cycle = 0; cycle < 240 && dates.length < limit; cycle += 1) {
+      const cycleStart = addDaysIso(firstWeek, cycle * interval * 7)
+      if (input.endsOn && cycleStart > input.endsOn) break
+      for (const weekday of weekdays) {
+        const date = addDaysIso(cycleStart, weekday - 1)
+        if (date < input.startsOn) continue
+        if (input.endsOn && date > input.endsOn) continue
+        dates.push(date)
+        if (dates.length >= limit) break
+      }
+    }
+  } else {
+    for (let index = 0; index < 240 && dates.length < limit; index += 1) {
+      const date = addMonthsClampedIso(input.startsOn, index * interval)
+      if (input.endsOn && date > input.endsOn) break
+      dates.push(date)
+    }
+  }
+
+  if (!dates.length) throw new Error('empty_series')
+  return dates
+}
+
 export async function listCourseSessionsForWeek(courseId: string, requestedWeek?: string | null): Promise<{
   weekStart: string
   sessions: CourseSessionItem[]
@@ -98,7 +182,7 @@ export async function listCourseSessionsForWeek(courseId: string, requestedWeek?
   const sql = getSql()
   const [sessionRows, attendanceRows] = await Promise.all([
     sql.query(
-      `SELECT id, course_id, session_date, start_time::text, end_time::text, title, note, status
+      `SELECT id, course_id, series_id, session_date, start_time::text, end_time::text, title, note, status
        FROM course_sessions
        WHERE course_id = $1 AND session_date >= $2::date AND session_date < $3::date
        ORDER BY session_date ASC, start_time ASC`,
@@ -145,6 +229,7 @@ export async function listCourseSessionsForWeek(courseId: string, requestedWeek?
   const sessions = (sessionRows as Array<{
     id: string
     course_id: string
+    series_id: string | null
     session_date: string | Date
     start_time: string
     end_time: string
@@ -154,6 +239,7 @@ export async function listCourseSessionsForWeek(courseId: string, requestedWeek?
   }>).map((row) => ({
     id: row.id,
     courseId: row.course_id,
+    seriesId: row.series_id,
     sessionDate: dateOnly(row.session_date),
     startTime: timeOnly(row.start_time),
     endTime: timeOnly(row.end_time),
@@ -179,6 +265,28 @@ export async function createCourseSession(input: {
      VALUES ($1, $2, $3::date, $4::time, $5::time, $6, $7)`,
     [randomUUID(), input.courseId, input.sessionDate, input.startTime, input.endTime, input.title, input.note],
   )
+}
+
+export async function createCourseSessionSeries(input: CreateCourseSessionSeriesInput): Promise<number> {
+  const dates = generateCourseSessionSeriesDates(input)
+  const seriesId = randomUUID()
+  const sql = getSql()
+  const queries = [
+    sql.query(
+      `INSERT INTO course_session_series
+         (id, course_id, title, note, start_time, end_time, frequency, interval_value, weekdays, starts_on, ends_on, occurrence_count)
+       VALUES ($1, $2, $3, $4, $5::time, $6::time, $7, $8, $9::smallint[], $10::date, $11::date, $12)`,
+      [seriesId, input.courseId, input.title, input.note, input.startTime, input.endTime, input.frequency, input.interval, input.weekdays, input.startsOn, input.endsOn, input.occurrenceCount],
+    ),
+    ...dates.map((sessionDate, index) => sql.query(
+      `INSERT INTO course_sessions
+         (id, course_id, series_id, series_position, session_date, start_time, end_time, title, note)
+       VALUES ($1, $2, $3, $4, $5::date, $6::time, $7::time, $8, $9)`,
+      [randomUUID(), input.courseId, seriesId, index + 1, sessionDate, input.startTime, input.endTime, input.title, input.note],
+    )),
+  ]
+  await sql.transaction(queries)
+  return dates.length
 }
 
 export async function updateCourseSessionStatus(
