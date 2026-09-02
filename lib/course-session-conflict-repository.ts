@@ -10,6 +10,7 @@ import {
 import {
   generateCourseSessionSeriesDates,
   type CourseSessionFrequency,
+  type CourseSessionStatus,
 } from '@/lib/course-session-repository'
 
 export interface ProposedCourseSessionSlot {
@@ -52,7 +53,7 @@ type ConflictRow = {
   existing_session_date: string | Date
   existing_start_time: string
   existing_end_time: string
-  existing_status: 'scheduled' | 'completed'
+  existing_status: 'scheduled' | 'completed' | 'cancelled'
   relation: CourseSessionConflictRelation
   total_count: number | string
 }
@@ -92,7 +93,7 @@ export async function findCourseSessionConflicts(
             cs.id AS existing_session_id,
             cs.course_id AS existing_course_id,
             c.title AS existing_course_title,
-            c.short_title AS existing_course_short_title,
+            COALESCE(c.short_title, c.title) AS existing_course_short_title,
             cs.title AS existing_session_title,
             cs.session_date AS existing_session_date,
             cs.start_time::text AS existing_start_time,
@@ -108,19 +109,26 @@ export async function findCourseSessionConflicts(
      FROM proposed
      JOIN course_sessions cs
        ON cs.session_date = proposed.session_date
-      AND cs.status <> 'cancelled'
-      AND cs.start_time < proposed.end_time
-      AND cs.end_time > proposed.start_time
+      AND (
+        (cs.status <> 'cancelled'
+          AND cs.start_time < proposed.end_time
+          AND cs.end_time > proposed.start_time)
+        OR
+        (cs.status = 'cancelled'
+          AND cs.course_id = $5
+          AND cs.start_time = proposed.start_time)
+      )
      JOIN courses c ON c.id = cs.course_id
      WHERE NOT (cs.id = ANY($4::text[]))
      ORDER BY proposed.session_date ASC, proposed.start_time ASC,
-              cs.start_time ASC, c.short_title ASC, cs.title ASC
+              cs.start_time ASC, COALESCE(c.short_title, c.title) ASC, cs.title ASC
      LIMIT 8`,
     [
       slots.map((slot) => slot.sessionDate),
       slots.map((slot) => slot.startTime),
       slots.map((slot) => slot.endTime),
       [...new Set(input.excludeSessionIds ?? [])],
+      input.courseId,
     ],
   ) as ConflictRow[]
 
@@ -188,6 +196,7 @@ export async function assertManagedCourseSessionUpdateAvailable(
   }
 
   if (!input.recurrence) throw new Error('session_recurrence_invalid')
+  if (target.series_position === null) throw new Error('session_series_invalid')
   const targetPosition = Number(target.series_position)
   if (!Number.isInteger(targetPosition)) throw new Error('session_series_invalid')
 
@@ -220,5 +229,37 @@ export async function assertManagedCourseSessionUpdateAvailable(
       endTime: input.endTime,
     })),
     excludeSessionIds: excludedRows.map((row) => row.id),
+  })
+}
+
+export async function assertCourseSessionStatusChangeAvailable(
+  courseId: string,
+  sessionId: string,
+  nextStatus: CourseSessionStatus,
+): Promise<void> {
+  if (nextStatus === 'cancelled') return
+
+  const rows = await getSql().query(
+    `SELECT session_date, start_time::text, end_time::text
+     FROM course_sessions
+     WHERE id = $1 AND course_id = $2
+     LIMIT 1`,
+    [sessionId, courseId],
+  ) as Array<{
+    session_date: string | Date
+    start_time: string
+    end_time: string
+  }>
+
+  if (!rows.length) throw new Error('session_not_found')
+  const row = rows[0]
+  await assertCourseSessionSlotsAvailable({
+    courseId,
+    slots: [{
+      sessionDate: dateOnly(row.session_date),
+      startTime: timeOnly(row.start_time),
+      endTime: timeOnly(row.end_time),
+    }],
+    excludeSessionIds: [sessionId],
   })
 }
