@@ -29,6 +29,7 @@ import {
 } from '@/lib/course-session-conflict'
 import {
   assertCourseSessionSlotsAvailable,
+  assertCourseSessionStatusChangeAvailable,
   assertManagedCourseSessionUpdateAvailable,
 } from '@/lib/course-session-conflict-repository'
 
@@ -316,13 +317,23 @@ export async function updateCourseSessionStatusAction(formData: FormData): Promi
     status: formData.get('status'),
   })
 
-  const returnTo = parsed.success ? courseSessionsPath(parsed.data.courseId, parsed.data.week) : '/admin/kurzusok'
+  const returnTo = parsed.success
+    ? courseSessionsPath(parsed.data.courseId, parsed.data.week, parsed.data.sessionId)
+    : '/admin/kurzusok'
   await requireAdmin(returnTo)
   if (!parsed.success) redirect(`${returnTo}&error=session_invalid`)
 
   try {
+    await assertCourseSessionStatusChangeAvailable(
+      parsed.data.courseId,
+      parsed.data.sessionId,
+      parsed.data.status,
+    )
     await updateCourseSessionStatus(parsed.data.courseId, parsed.data.sessionId, parsed.data.status)
-  } catch {
+  } catch (error) {
+    if (isCourseSessionConflictError(error)) {
+      redirect(withConflictFeedback(returnTo, encodeCourseSessionConflictSummary(error.summary)))
+    }
     redirect(`${returnTo}&error=session_save_failed`)
   }
 
