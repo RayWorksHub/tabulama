@@ -16,6 +16,8 @@ import {
 } from 'lucide-react'
 import { requireStudent } from '@/lib/auth'
 import { getStudentDashboard, type ModuleProgressStatus } from '@/lib/student-repository'
+import { listStudentSessionsForWeek } from '@/lib/course-session-repository'
+import { StudentWeeklySessions } from '@/components/portal/student-weekly-sessions'
 import { formatHUF, formatHuDate } from '@/lib/tabulama-config'
 import { COURSE_STATUS_LABELS, type CourseStatus } from '@/lib/course-repository'
 
@@ -54,10 +56,13 @@ function ProgressIcon({ status }: { status: ModuleProgressStatus }) {
 export default async function StudentPortalPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; course?: string }>
+  searchParams: Promise<{ view?: string; course?: string; week?: string }>
 }) {
   const [session, query] = await Promise.all([requireStudent('/portal'), searchParams])
-  const student = await getStudentDashboard(session.userId)
+  const [student, weeklySessions] = await Promise.all([
+    getStudentDashboard(session.userId),
+    listStudentSessionsForWeek(session.userId, query.week),
+  ])
   if (!student) redirect('/login?error=inactive')
 
   const requestedView = query.view as ViewId | undefined
@@ -119,7 +124,7 @@ export default async function StudentPortalPage({
               </div>
             ) : null}
 
-            {view === 'sessions' ? <div className="space-y-4">{student.enrollments.map((enrollment) => <section key={enrollment.id} className="rounded-2xl border border-border bg-card p-5 shadow-sm"><h2 className="font-bold">{enrollment.course.shortTitle}</h2><p className="mt-2 text-sm text-muted-foreground">Rendszeres időpont: {enrollment.course.weeklySchedule ?? 'nincs megadva'}</p><p className="mt-2 text-sm text-muted-foreground">A következő és korábbi alkalmak, jelenlétek és esetleges magánórák ezen a külön nézeten jelennek majd meg.</p></section>)}</div> : null}
+            {view === 'sessions' ? <StudentWeeklySessions weekStart={weeklySessions.weekStart} sessions={weeklySessions.sessions} /> : null}
 
             {view === 'materials' ? <div className="grid gap-4 xl:grid-cols-2">{student.enrollments.map((enrollment) => <section key={enrollment.id} className="rounded-2xl border border-border bg-card p-5 shadow-sm"><h2 className="font-bold">{enrollment.course.shortTitle}</h2><p className="mt-3 text-sm text-muted-foreground">Aktuális tananyagegység</p><p className="mt-1 font-semibold">{enrollment.currentModule?.title ?? 'Még nincs aktuális tananyag'}</p><p className="mt-3 text-sm text-muted-foreground">A későbbi leckék, videók, gyakorlóanyagok és GitHub-anyagok ehhez a haladási ponthoz kapcsolódhatnak.</p></section>)}</div> : null}
 
