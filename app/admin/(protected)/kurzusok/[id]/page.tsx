@@ -4,8 +4,10 @@ import { BookOpen, CalendarDays, LayoutDashboard, Settings2, TrendingUp, UsersRo
 import { CourseForm } from '@/components/admin/course-form'
 import { CourseModules } from '@/components/admin/course-modules'
 import { CourseStudentProgress } from '@/components/admin/course-student-progress'
+import { CourseWeeklySessions } from '@/components/admin/course-weekly-sessions'
 import { COURSE_STATUS_LABELS, getCourseById } from '@/lib/course-repository'
 import { getCourseProgressWorkspace } from '@/lib/course-progress-repository'
+import { listCourseSessionsForWeek } from '@/lib/course-session-repository'
 import { listCourseModules } from '@/lib/student-repository'
 
 export const dynamic = 'force-dynamic'
@@ -25,6 +27,8 @@ const successMessages: Record<string, string> = {
   saved: 'A kurzus adatai elmentve.',
   module_saved: 'A kurzusmodul elmentve.',
   progress_updated: 'A kijelölt tanulók haladása frissült.',
+  session_saved: 'Az óra adatai elmentve.',
+  attendance_saved: 'A jelenléti adatok elmentve.',
 }
 
 const errorMessages: Record<string, string> = {
@@ -35,6 +39,10 @@ const errorMessages: Record<string, string> = {
   progress_invalid: 'Jelölj ki legalább egy tanulót és válassz érvényes műveletet.',
   progress_target_required: 'Konkrét tananyagegység beállításához válassz egy modult.',
   progress_save_failed: 'A csoportos haladás módosítása sikertelen.',
+  session_invalid: 'Az óra adatai hibásak. Ellenőrizd a dátumot és az időpontot.',
+  session_save_failed: 'Az óra mentése sikertelen. Lehet, hogy erre az időpontra már van óra.',
+  attendance_invalid: 'A jelenléti adatok nem értelmezhetők.',
+  attendance_save_failed: 'A jelenléti adatok mentése sikertelen.',
 }
 
 export default async function CourseDetailsPage({
@@ -42,13 +50,14 @@ export default async function CourseDetailsPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ error?: string; success?: string; view?: string }>
+  searchParams: Promise<{ error?: string; success?: string; view?: string; week?: string; session?: string }>
 }) {
   const [{ id }, feedback] = await Promise.all([params, searchParams])
-  const [course, modules, workspace] = await Promise.all([
+  const [course, modules, workspace, weeklySessions] = await Promise.all([
     getCourseById(id),
     listCourseModules(id),
     getCourseProgressWorkspace(id),
+    listCourseSessionsForWeek(id, feedback.week),
   ])
   if (!course) notFound()
 
@@ -144,7 +153,12 @@ export default async function CourseDetailsPage({
           ) : null}
 
           {view === 'sessions' ? (
-            <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"><h2 className="text-xl font-bold">Órák</h2><p className="mt-2 text-sm text-slate-500">Ez a nézet a kurzus alkalmainak, jelenléteinek és későbbi órakezelésének helye. Jelenleg az ütemezés: <strong>{course.weeklySchedule ?? 'nincs megadva'}</strong>.</p></section>
+            <CourseWeeklySessions
+              courseId={course.id}
+              weekStart={weeklySessions.weekStart}
+              sessions={weeklySessions.sessions}
+              selectedSessionId={feedback.session}
+            />
           ) : null}
 
           {view === 'admin' ? <CourseForm course={course} /> : null}
