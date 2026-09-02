@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { CheckCircle2, CircleAlert, FastForward, UsersRound } from 'lucide-react'
-import { bulkCourseProgressAction } from '@/app/admin/(protected)/kurzusok/actions'
+import { bulkCourseProgressAction } from '@/app/admin/(protected)/kurzusok/progress-actions'
 import type { CourseModuleItem } from '@/lib/student-repository'
 import type { CourseProgressWorkspace } from '@/lib/course-progress-repository'
 
