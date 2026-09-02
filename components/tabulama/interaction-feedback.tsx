@@ -38,8 +38,9 @@ function haptic(pattern: number | number[]): void {
 
 function isTrackableField(target: EventTarget | null): target is HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement {
   if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement)) return false
+  if (!target.name || target.dataset.feedbackIgnore === 'true') return false
   if (target instanceof HTMLInputElement && ['hidden', 'submit', 'button', 'reset'].includes(target.type)) return false
-  return target.dataset.feedbackIgnore !== 'true'
+  return true
 }
 
 export function InteractionFeedback() {
