@@ -192,10 +192,9 @@ export async function bulkUpdateCourseProgress(input: {
       if (!target) throw new Error('target_module_not_found')
       targetPosition = target.position
     } else {
-      const currentIndex = Math.max(
-        modules.findIndex((module) => module.progress_status === 'in_progress'),
-        modules.findIndex((module) => (module.progress_status ?? 'upcoming') === 'upcoming'),
-      )
+      const explicitCurrentIndex = modules.findIndex((module) => module.progress_status === 'in_progress')
+      const firstUpcomingIndex = modules.findIndex((module) => (module.progress_status ?? 'upcoming') === 'upcoming')
+      const currentIndex = explicitCurrentIndex >= 0 ? explicitCurrentIndex : firstUpcomingIndex
       const normalizedIndex = currentIndex >= 0 ? currentIndex : modules.length - 1
       const current = modules[normalizedIndex]
       if (!current) continue
