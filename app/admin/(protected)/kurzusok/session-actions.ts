@@ -10,6 +10,7 @@ import {
   SESSION_STATUSES,
   createCourseSession,
   createCourseSessionSeries,
+  generateCourseSessionSeriesDates,
   markAllSessionPresent,
   saveSessionAttendance,
   updateCourseSessionStatus,
@@ -22,6 +23,14 @@ import {
   updateManagedCourseSession,
   type CourseSessionRecurrenceInput,
 } from '@/lib/course-session-management-repository'
+import {
+  encodeCourseSessionConflictSummary,
+  isCourseSessionConflictError,
+} from '@/lib/course-session-conflict'
+import {
+  assertCourseSessionSlotsAvailable,
+  assertManagedCourseSessionUpdateAvailable,
+} from '@/lib/course-session-conflict-repository'
 
 const id = z.string().trim().min(1).max(120)
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -36,6 +45,12 @@ function courseSessionsPath(courseId: string, week?: string | null, sessionId?: 
   })
   if (sessionId) query.set('session', sessionId)
   return `/admin/kurzusok/${encodeURIComponent(courseId)}?${query.toString()}`
+}
+
+function withConflictFeedback(returnTo: string, encodedConflicts: string): string {
+  const url = new URL(returnTo, 'https://tabulama.local')
+  url.searchParams.set('conflicts', encodedConflicts)
+  return `${url.pathname}?${url.searchParams.toString()}`
 }
 
 function mutationErrorCode(error: unknown): string {
@@ -128,6 +143,14 @@ export async function createCourseSessionAction(formData: FormData): Promise<voi
 
   try {
     if (parsed.data.frequency === 'none') {
+      await assertCourseSessionSlotsAvailable({
+        courseId: parsed.data.courseId,
+        slots: [{
+          sessionDate: parsed.data.sessionDate,
+          startTime: parsed.data.startTime,
+          endTime: parsed.data.endTime,
+        }],
+      })
       await createCourseSession({
         courseId: parsed.data.courseId,
         sessionDate: parsed.data.sessionDate,
@@ -137,6 +160,24 @@ export async function createCourseSessionAction(formData: FormData): Promise<voi
         note: parsed.data.note || null,
       })
     } else {
+      const endsOn = parsed.data.endMode === 'until' ? parsed.data.untilDate ?? null : null
+      const occurrenceCount = parsed.data.endMode === 'count' ? parsed.data.occurrenceCount ?? null : null
+      const dates = generateCourseSessionSeriesDates({
+        startsOn: parsed.data.sessionDate,
+        frequency: parsed.data.frequency,
+        interval: parsed.data.interval,
+        weekdays,
+        endsOn,
+        occurrenceCount,
+      })
+      await assertCourseSessionSlotsAvailable({
+        courseId: parsed.data.courseId,
+        slots: dates.map((sessionDate) => ({
+          sessionDate,
+          startTime: parsed.data.startTime,
+          endTime: parsed.data.endTime,
+        })),
+      })
       await createCourseSessionSeries({
         courseId: parsed.data.courseId,
         startsOn: parsed.data.sessionDate,
@@ -147,11 +188,14 @@ export async function createCourseSessionAction(formData: FormData): Promise<voi
         frequency: parsed.data.frequency,
         interval: parsed.data.interval,
         weekdays,
-        endsOn: parsed.data.endMode === 'until' ? parsed.data.untilDate ?? null : null,
-        occurrenceCount: parsed.data.endMode === 'count' ? parsed.data.occurrenceCount ?? null : null,
+        endsOn,
+        occurrenceCount,
       })
     }
-  } catch {
+  } catch (error) {
+    if (isCourseSessionConflictError(error)) {
+      redirect(withConflictFeedback(returnTo, encodeCourseSessionConflictSummary(error.summary)))
+    }
     redirect(`${returnTo}&error=session_save_failed`)
   }
 
@@ -192,19 +236,25 @@ export async function updateManagedCourseSessionAction(formData: FormData): Prom
   const recurrence = parsed.data.scope === 'single' ? null : parseRecurrence(formData, parsed.data.sessionDate)
   if (parsed.data.scope !== 'single' && !recurrence) redirect(`${returnTo}&error=session_recurrence_invalid`)
 
+  const updateInput = {
+    courseId: parsed.data.courseId,
+    sessionId: parsed.data.sessionId,
+    scope: parsed.data.scope,
+    sessionDate: parsed.data.sessionDate,
+    startTime: parsed.data.startTime,
+    endTime: parsed.data.endTime,
+    title: parsed.data.title,
+    note: parsed.data.note || null,
+    recurrence,
+  }
+
   try {
-    await updateManagedCourseSession({
-      courseId: parsed.data.courseId,
-      sessionId: parsed.data.sessionId,
-      scope: parsed.data.scope,
-      sessionDate: parsed.data.sessionDate,
-      startTime: parsed.data.startTime,
-      endTime: parsed.data.endTime,
-      title: parsed.data.title,
-      note: parsed.data.note || null,
-      recurrence,
-    })
+    await assertManagedCourseSessionUpdateAvailable(updateInput)
+    await updateManagedCourseSession(updateInput)
   } catch (error) {
+    if (isCourseSessionConflictError(error)) {
+      redirect(withConflictFeedback(returnTo, encodeCourseSessionConflictSummary(error.summary)))
+    }
     redirect(`${returnTo}&error=${mutationErrorCode(error)}`)
   }
 
