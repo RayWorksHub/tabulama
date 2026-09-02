@@ -1,9 +1,18 @@
 import Link from 'next/link'
-import { ArrowRight, Banknote, BookOpen, Clock3, UserCheck, Users } from 'lucide-react'
+import {
+  ArrowRight,
+  Banknote,
+  BookOpen,
+  Clock3,
+  GraduationCap,
+  Plus,
+  UserCheck,
+  Users,
+} from 'lucide-react'
+import { StatusBadge } from '@/components/admin/status-badge'
+import { formatAdminDate } from '@/lib/admin-display'
 import { getAdminDashboardStats, listApplications } from '@/lib/application-repository'
 import { formatHUF } from '@/lib/tabulama-config'
-import { formatAdminDate } from '@/lib/admin-display'
-import { StatusBadge } from '@/components/admin/status-badge'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,72 +28,107 @@ export default async function AdminDashboardPage() {
     { label: 'Új jelentkezések', value: stats.newApplications, icon: Clock3 },
     { label: 'Aktív diákok', value: stats.activeStudents, icon: UserCheck },
     { label: 'Fizetésre vár', value: stats.awaitingPayment, icon: Banknote },
-    { label: 'Közelgő kurzusok', value: stats.upcomingCourses, icon: BookOpen },
+    { label: 'Közelgő kurzusok', value: stats.upcomingCourses, icon: GraduationCap },
   ]
 
   return (
-    <div className="mx-auto max-w-7xl">
-      <div>
-        <p className="text-sm font-semibold uppercase tracking-[0.14em] text-[#9b6e2f]">Adminisztráció</p>
-        <h1 className="mt-2 text-3xl font-bold tracking-tight">Áttekintés</h1>
-        <p className="mt-2 text-slate-600">A kurzusok és jelentkezések aktuális állapota egy helyen.</p>
-      </div>
+    <div className="tl-page">
+      <header className="tl-page-header">
+        <div>
+          <p className="tl-page-eyebrow">Admin Center</p>
+          <h1>Áttekintés</h1>
+          <p>A kurzusok, tanulók és jelentkezések aktuális állapota.</p>
+        </div>
+      </header>
 
-      <section className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-3" aria-label="Fő mutatók">
+      <nav className="tl-commandbar" aria-label="Gyors műveletek">
+        <Link href="/admin/kurzusok/uj" className="tl-command tl-command-primary">
+          <Plus className="h-4 w-4" />
+          Új kurzus
+        </Link>
+        <Link href="/admin/jelentkezok" className="tl-command">
+          <Users className="h-4 w-4" />
+          Jelentkezők kezelése
+        </Link>
+        <Link href="/admin/diakok" className="tl-command">
+          <GraduationCap className="h-4 w-4" />
+          Diákok megnyitása
+        </Link>
+      </nav>
+
+      <section className="tl-metric-grid" aria-label="Fő mutatók">
         {cards.map((card) => (
-          <div key={card.label} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="text-sm font-medium text-slate-500">{card.label}</p>
-                <p className="mt-2 text-3xl font-bold tracking-tight">{card.value}</p>
-              </div>
-              <div className="rounded-xl bg-[#f7f2ea] p-3 text-[#9b6e2f]">
-                <card.icon className="h-5 w-5" />
-              </div>
+          <article key={card.label} className="tl-metric-card">
+            <div className="tl-metric-icon" aria-hidden="true">
+              <card.icon className="h-5 w-5" />
             </div>
-          </div>
+            <div>
+              <p>{card.label}</p>
+              <strong>{card.value}</strong>
+            </div>
+          </article>
         ))}
       </section>
 
-      <section className="mt-6 grid gap-4 sm:grid-cols-2">
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="text-sm font-medium text-slate-500">Beérkezett összeg</p>
-          <p className="mt-2 text-2xl font-bold text-emerald-700">{formatHUF(stats.receivedAmountHuf)}</p>
-          <p className="mt-1 text-xs text-slate-500">Valódi befizetési rekordokból, TESZT nélkül.</p>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="text-sm font-medium text-slate-500">Nyilvántartott hátralék</p>
-          <p className="mt-2 text-2xl font-bold text-orange-700">{formatHUF(stats.outstandingAmountHuf)}</p>
-          <p className="mt-1 text-xs text-slate-500">Fizetési tervekből és befizetésekből, TESZT nélkül.</p>
-        </div>
+      <section className="tl-finance-strip" aria-label="Pénzügyi összesítés">
+        <article>
+          <div className="tl-finance-strip-icon is-positive" aria-hidden="true">
+            <Banknote className="h-5 w-5" />
+          </div>
+          <div>
+            <p>Beérkezett összeg</p>
+            <strong className="is-positive">{formatHUF(stats.receivedAmountHuf)}</strong>
+            <span>Valódi befizetési rekordokból, TESZT nélkül.</span>
+          </div>
+        </article>
+        <article>
+          <div className="tl-finance-strip-icon is-warning" aria-hidden="true">
+            <Clock3 className="h-5 w-5" />
+          </div>
+          <div>
+            <p>Nyilvántartott hátralék</p>
+            <strong className="is-warning">{formatHUF(stats.outstandingAmountHuf)}</strong>
+            <span>Fizetési tervekből és befizetésekből, TESZT nélkül.</span>
+          </div>
+        </article>
       </section>
 
-      <section className="mt-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+      <section className="tl-data-panel">
+        <div className="tl-data-panel-header">
           <div>
-            <h2 className="text-lg font-bold">Legújabb jelentkezések</h2>
-            <p className="mt-1 text-sm text-slate-500">A legutóbb beérkezett adatok.</p>
+            <h2>Legújabb jelentkezések</h2>
+            <p>A legutóbb beérkezett adatok.</p>
           </div>
-          <Link href="/admin/jelentkezok" className="inline-flex items-center gap-2 text-sm font-bold text-[#8b6128] hover:underline">
-            Összes
+          <Link href="/admin/jelentkezok" className="tl-panel-link">
+            Összes megnyitása
             <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
+
         {applications.length === 0 ? (
-          <p className="px-5 py-10 text-center text-sm text-slate-500">Még nincs jelentkezés.</p>
+          <p className="tl-empty-state">Még nincs jelentkezés.</p>
         ) : (
-          <div className="divide-y divide-slate-100">
+          <div className="tl-application-list">
+            <div className="tl-application-list-head" aria-hidden="true">
+              <span>Jelentkező és kurzus</span>
+              <span>Állapot</span>
+              <span>Beérkezett</span>
+            </div>
             {applications.map((application) => (
-              <Link key={application.id} href={`/admin/jelentkezok/${application.id}`} className="grid gap-2 px-5 py-4 transition hover:bg-slate-50 sm:grid-cols-[1fr_auto_auto] sm:items-center sm:gap-5">
+              <Link
+                key={application.id}
+                href={`/admin/jelentkezok/${application.id}`}
+                className="tl-application-row"
+              >
                 <div>
-                  <p className="font-semibold">
+                  <p>
                     {application.participantName}
-                    {application.isTest ? <span className="ml-2 rounded-full bg-fuchsia-100 px-2 py-0.5 text-xs font-bold text-fuchsia-800 ring-1 ring-fuchsia-200">TESZT</span> : null}
+                    {application.isTest ? <span className="tl-test-badge">TESZT</span> : null}
                   </p>
-                  <p className="mt-1 text-sm text-slate-500">{application.courseTitle}</p>
+                  <span>{application.courseTitle}</span>
                 </div>
                 <StatusBadge status={application.status} />
-                <time className="text-sm text-slate-500">{formatAdminDate(application.createdAt)}</time>
+                <time>{formatAdminDate(application.createdAt)}</time>
               </Link>
             ))}
           </div>
