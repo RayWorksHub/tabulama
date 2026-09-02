@@ -78,6 +78,12 @@ function formatConflictDate(value: string): string {
   }).format(new Date(`${value}T00:00:00Z`))
 }
 
+function conflictStatusLabel(status: 'scheduled' | 'completed' | 'cancelled'): string {
+  if (status === 'completed') return 'Megtartva'
+  if (status === 'cancelled') return 'Elmaradt'
+  return 'Tervezett'
+}
+
 export function InteractionFeedback() {
   const [feedback, setFeedback] = useState<FeedbackState>(null)
   const dismissTimer = useRef<number | null>(null)
@@ -261,7 +267,7 @@ export function InteractionFeedback() {
                     <p className="text-sm font-bold text-slate-950">{conflict.existingCourseShortTitle}</p>
                     <p className="mt-0.5 text-sm text-slate-700">{conflict.existingSessionTitle}</p>
                     <p className="mt-1 text-xs text-slate-500">
-                      {conflict.existingStartTime}–{conflict.existingEndTime} · {conflict.existingStatus === 'completed' ? 'Megtartva' : 'Tervezett'}
+                      {conflict.existingStartTime}–{conflict.existingEndTime} · {conflictStatusLabel(conflict.existingStatus)}
                     </p>
                   </div>
                   <p className="mt-2 text-xs font-semibold text-red-700">{relationLabels[conflict.relation]}</p>
