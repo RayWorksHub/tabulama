@@ -27,17 +27,18 @@ export async function updateStudentProgressAction(formData: FormData): Promise<v
     moduleId: formData.get('moduleId'),
     status: formData.get('status'),
   })
-  const returnTo = parsed.success ? `/admin/diakok/${parsed.data.studentId}` : '/admin/diakok'
+  const studentPath = parsed.success ? `/admin/diakok/${parsed.data.studentId}` : '/admin/diakok'
+  const returnTo = parsed.success ? `${studentPath}?view=progress&course=${parsed.data.enrollmentId}` : studentPath
   await requireAdmin(returnTo)
   if (!parsed.success) redirect(`${returnTo}?error=invalid_form`)
   try {
     await updateModuleProgress(parsed.data.enrollmentId, parsed.data.moduleId, parsed.data.status)
   } catch {
-    redirect(`${returnTo}?error=save_failed`)
+    redirect(`${returnTo}&error=save_failed`)
   }
-  revalidatePath(returnTo)
+  revalidatePath(studentPath)
   revalidatePath('/portal')
-  redirect(`${returnTo}?success=progress_updated`)
+  redirect(`${returnTo}&success=progress_updated`)
 }
 
 export async function resendStudentActivationAction(formData: FormData): Promise<void> {
