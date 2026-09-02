@@ -105,14 +105,14 @@ export function encodeCourseSessionConflictSummary(summary: CourseSessionConflic
     totalCount: Math.max(summary.conflicts.length, Math.trunc(summary.totalCount)),
     conflicts: summary.conflicts.slice(0, 8),
   }
-  return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url')
+  return encodeURIComponent(JSON.stringify(payload))
 }
 
 export function decodeCourseSessionConflictSummary(value: string | null | undefined): CourseSessionConflictSummary | null {
-  if (!value || value.length > 16_000) return null
+  if (!value || value.length > 24_000) return null
 
   try {
-    const decoded = JSON.parse(Buffer.from(value, 'base64url').toString('utf8')) as unknown
+    const decoded = JSON.parse(decodeURIComponent(value)) as unknown
     if (!decoded || typeof decoded !== 'object') return null
     const payload = decoded as Record<string, unknown>
     const requestedCourseId = cleanString(payload.requestedCourseId, 120)
