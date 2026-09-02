@@ -1,8 +1,10 @@
 import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono, Poppins } from 'next/font/google'
+import { InteractionFeedback } from '@/components/tabulama/interaction-feedback'
 import { SiteChrome } from '@/components/tabulama/site-chrome'
 import './globals.css'
+import './interaction-feedback.css'
 
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] })
 const geistMono = Geist_Mono({
@@ -69,6 +71,7 @@ export default function RootLayout({
     >
       <body className="font-sans antialiased">
         <SiteChrome>{children}</SiteChrome>
+        <InteractionFeedback />
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>

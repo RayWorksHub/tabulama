@@ -1,0 +1,88 @@
+/* Global tactile interaction and save-state feedback. */
+button,
+[role='button'],
+a[href] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:not(:disabled),
+[role='button']:not([aria-disabled='true']),
+a[href] {
+  transition-property: transform, filter, box-shadow, background-color, border-color, opacity;
+  transition-duration: 140ms;
+  transition-timing-function: cubic-bezier(.2, .8, .2, 1);
+  transform-origin: center;
+}
+
+button:not(:disabled):active,
+[role='button']:not([aria-disabled='true']):active,
+a[href]:active {
+  transform: translateY(1px) scale(.985);
+  filter: brightness(.97);
+  transition-duration: 55ms;
+}
+
+form[data-form-state='dirty'] button[type='submit']:not(:disabled) {
+  box-shadow: 0 0 0 3px rgb(189 139 60 / 18%);
+}
+
+form[data-form-state='dirty'] button[type='submit']:not(:disabled)::after {
+  content: ' •';
+  color: #d59a2f;
+  font-weight: 900;
+}
+
+button[data-pending='true'] {
+  cursor: wait;
+  opacity: .78;
+  pointer-events: none;
+}
+
+button[data-pending='true']::after {
+  content: '' !important;
+  display: inline-block;
+  width: .9rem;
+  height: .9rem;
+  margin-left: .55rem;
+  vertical-align: -.12rem;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 999px;
+  animation: tabu-feedback-spin .7s linear infinite;
+}
+
+.tabu-feedback-toast {
+  animation: tabu-feedback-in 180ms cubic-bezier(.2, .8, .2, 1) both;
+  backdrop-filter: blur(10px);
+}
+
+@keyframes tabu-feedback-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes tabu-feedback-in {
+  from {
+    opacity: 0;
+    transform: translate3d(14px, 8px, 0) scale(.98);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']),
+  a[href],
+  .tabu-feedback-toast {
+    transition: none;
+    animation: none;
+  }
+
+  button:not(:disabled):active,
+  [role='button']:not([aria-disabled='true']):active,
+  a[href]:active {
+    transform: none;
+  }
+}
