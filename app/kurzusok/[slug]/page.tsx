@@ -6,6 +6,7 @@ import {
   CalendarDays,
   Check,
   Clock,
+  Gift,
   GraduationCap,
   Star,
   TrendingDown,
@@ -291,11 +292,17 @@ function PricingSection({
             </h3>
 
             {featuredOption.savingsVsStandard ? (
-              <div className="mt-4">
+              <div className="mt-4 flex flex-wrap gap-2">
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/15 px-3 py-1.5 text-sm font-semibold text-primary">
                   <TrendingDown className="h-4 w-4" />
                   {formatHUF(featuredOption.savingsVsStandard)} megtakarítás
                 </span>
+                {featuredOption.bonusPrivateLessons && featuredOption.bonusLessonMinutes ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/15 px-3 py-1.5 text-sm font-semibold text-primary">
+                    <Gift className="h-4 w-4" />
+                    {featuredOption.bonusPrivateLessons} × {featuredOption.bonusLessonMinutes} perc ajándék magánóra
+                  </span>
+                ) : null}
               </div>
             ) : null}
 

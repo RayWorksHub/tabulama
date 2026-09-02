@@ -16,6 +16,8 @@ test('a kurzus saját árai és részlethatáridői kerülnek a konstrukciókba'
   const options = buildCoursePaymentOptions(course, new Date('2026-08-01T12:00:00.000Z'))
   assert.equal(options.standard?.total, 330_000)
   assert.equal(options['early-bird']?.total, 250_000)
+  assert.equal(options['early-bird']?.bonusPrivateLessons, 6)
+  assert.equal(options['early-bird']?.bonusLessonMinutes, 45)
   assert.equal(options.installment?.total, 360_000)
   assert.deepEqual(options.installment?.dueDates, course.installmentDueDates)
 })

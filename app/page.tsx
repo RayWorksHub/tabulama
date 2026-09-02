@@ -71,19 +71,13 @@ export default async function TabuLamaHomePage() {
               kurzusokat, Python-képzéseket, valamint ágazati alapvizsga- és
               érettségi felkészítést.
             </p>
-            <div className="mt-8 flex flex-col gap-4 sm:flex-row">
+            <div className="mt-8">
               <Link
                 href="/kurzusok"
                 className={buttonVariants({ size: 'lg' })}
               >
                 Kurzusok megtekintése
                 <ArrowRight className="ml-2 h-4 w-4" />
-              </Link>
-              <Link
-                href="#modszertan"
-                className="inline-flex min-h-11 items-center justify-center rounded-full border border-navy-foreground/30 px-6 py-3 font-bold text-navy-foreground transition-colors hover:bg-navy-foreground/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-navy"
-              >
-                Hogyan tanítunk?
               </Link>
             </div>
           </div>
@@ -170,7 +164,7 @@ export default async function TabuLamaHomePage() {
         </div>
       </section>
 
-      <section className="bg-muted/50 py-16">
+      <section className="bg-muted/50 py-16 lg:py-20">
         <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div><span className="text-sm font-semibold uppercase tracking-[0.15em] text-primary">Aktuális kínálat</span><h2 className="font-heading mt-3 text-3xl font-extrabold tracking-tight">Közelgő kurzusok</h2></div>
@@ -178,26 +172,6 @@ export default async function TabuLamaHomePage() {
           </div>
           {upcomingCourses.length ? <div className="mt-9 grid gap-6 md:grid-cols-2 xl:grid-cols-3">{upcomingCourses.map((course) => <CourseCard key={course.id} course={course} />)}</div> : <p className="mt-9 rounded-2xl border border-border bg-card p-8 text-center text-muted-foreground">A következő kurzusok hamarosan megjelennek.</p>}
         </div>
-      </section>
-
-      {/* CTA */}
-      <section className="mx-auto max-w-6xl px-4 pb-20 sm:px-6 lg:px-8">
-        <Reveal className="overflow-hidden rounded-3xl bg-navy px-6 py-14 text-center text-navy-foreground sm:px-12">
-          <h2 className="mx-auto max-w-2xl text-balance font-heading text-3xl font-extrabold tracking-tight">
-            Válassz az aktuális kurzusok közül
-          </h2>
-          <p className="mx-auto mt-4 max-w-xl text-navy-foreground/75">
-            Az időpont, a tematika, az ár és a férőhely minden kurzusnál külön
-            látható.
-          </p>
-          <Link
-            href="/kurzusok"
-            className={`${buttonVariants({ size: 'lg' })} mt-8`}
-          >
-            Kurzusok megtekintése
-            <ArrowRight className="ml-2 h-4 w-4" />
-          </Link>
-        </Reveal>
       </section>
     </>
   )

@@ -38,11 +38,11 @@ export function buildCoursePaymentOptions(course: CoursePricingSource, now: Date
     available: true, dueDates: [null],
   }
   const discounted: CoursePaymentOption | null = course.discountedPriceHuf === null ? null : {
-    key: 'early-bird', name: 'Kedvezményes egyösszegű befizetés', paymentType: 'lump-sum',
+    key: 'early-bird', name: 'Early bird – egyösszegű befizetés', paymentType: 'lump-sum',
     total: course.discountedPriceHuf, installmentCount: null, installmentAmount: null,
-    paymentDeadline: course.discountedPaymentDeadline, bonusPrivateLessons: null, bonusLessonMinutes: null,
+    paymentDeadline: course.discountedPaymentDeadline, bonusPrivateLessons: 6, bonusLessonMinutes: 45,
     savingsVsStandard: Math.max(course.priceHuf - course.discountedPriceHuf, 0),
-    description: 'A kurzus kedvezményes, egyösszegű díja.', available: discountedAvailable,
+    description: 'Korai egyösszegű befizetés nagy kedvezménnyel és 6 × 45 perc ajándék magánórával.', available: discountedAvailable,
     dueDates: [course.discountedPaymentDeadline],
   }
   const installment: CoursePaymentOption | null = course.installmentEnabled
