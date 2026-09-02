@@ -19,7 +19,7 @@ export interface CourseSessionConflictItem {
   existingSessionDate: string
   existingStartTime: string
   existingEndTime: string
-  existingStatus: 'scheduled' | 'completed'
+  existingStatus: 'scheduled' | 'completed' | 'cancelled'
   relation: CourseSessionConflictRelation
 }
 
@@ -72,7 +72,13 @@ function normalizeConflict(value: unknown): CourseSessionConflictItem | null {
   const existingSessionDate = cleanDate(item.existingSessionDate)
   const existingStartTime = cleanTime(item.existingStartTime)
   const existingEndTime = cleanTime(item.existingEndTime)
-  const existingStatus = item.existingStatus === 'completed' ? 'completed' : item.existingStatus === 'scheduled' ? 'scheduled' : null
+  const existingStatus = item.existingStatus === 'completed'
+    ? 'completed'
+    : item.existingStatus === 'scheduled'
+      ? 'scheduled'
+      : item.existingStatus === 'cancelled'
+        ? 'cancelled'
+        : null
   const relation = COURSE_SESSION_CONFLICT_RELATIONS.includes(item.relation as CourseSessionConflictRelation)
     ? item.relation as CourseSessionConflictRelation
     : null
