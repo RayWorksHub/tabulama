@@ -8,6 +8,7 @@ import { CourseWeeklySessions } from '@/components/admin/course-weekly-sessions'
 import { COURSE_STATUS_LABELS, getCourseById } from '@/lib/course-repository'
 import { getCourseProgressWorkspace } from '@/lib/course-progress-repository'
 import { listCourseSessionsForWeek } from '@/lib/course-session-repository'
+import { getCourseSessionManagementDetails } from '@/lib/course-session-management-repository'
 import { listCourseModules } from '@/lib/student-repository'
 
 export const dynamic = 'force-dynamic'
@@ -29,6 +30,11 @@ const successMessages: Record<string, string> = {
   progress_updated: 'A kijelölt tanulók haladása frissült.',
   session_saved: 'Az óra adatai elmentve.',
   session_series_saved: 'Az ismétlődő órasorozat elkészült.',
+  session_updated: 'A kiválasztott óra módosításai elmentve.',
+  session_series_updated: 'Az órasorozat kijelölt része frissült.',
+  session_deleted: 'A kiválasztott óra törölve.',
+  session_future_deleted: 'A kiválasztott és az azt követő alkalmak törölve.',
+  session_series_deleted: 'A teljes órasorozat törölve.',
   attendance_saved: 'A jelenléti adatok elmentve.',
 }
 
@@ -42,7 +48,10 @@ const errorMessages: Record<string, string> = {
   progress_save_failed: 'A csoportos haladás módosítása sikertelen.',
   session_invalid: 'Az óra adatai hibásak. Ellenőrizd a dátumot és az időpontot.',
   session_recurrence_invalid: 'Az ismétlődés beállításai hibásak. Ellenőrizd a gyakoriságot és a befejezést.',
-  session_save_failed: 'Az óra vagy órasorozat mentése sikertelen.',
+  session_series_history_locked: 'Az ismétlődési rend nem alakítható át, mert a kijelölt körben már van megtartott, elmaradt vagy jelenléttel rendelkező óra. Az egyes alkalmak adatai ettől még külön módosíthatók.',
+  session_history_confirmation_required: 'A művelet korábbi állapot- vagy jelenléti adatokat is törölne. Erősítsd meg ezt a törlési panelen.',
+  session_not_found: 'A kiválasztott óra már nem található. Frissítsd a heti nézetet.',
+  session_save_failed: 'Az óra vagy órasorozat mentése sikertelen. Ellenőrizd, nincs-e ugyanarra az időpontra már másik óra.',
   attendance_invalid: 'A jelenléti adatok nem értelmezhetők.',
   attendance_save_failed: 'A jelenléti adatok mentése sikertelen.',
 }
@@ -65,6 +74,15 @@ export default async function CourseDetailsPage({
 
   const requestedView = feedback.view as ViewId | undefined
   const view: ViewId = views.some((item) => item.id === requestedView) ? requestedView! : 'overview'
+  const selectedSessionId = view === 'sessions'
+    ? feedback.session && weeklySessions.sessions.some((session) => session.id === feedback.session)
+      ? feedback.session
+      : weeklySessions.sessions[0]?.id ?? null
+    : null
+  const managementDetails = selectedSessionId
+    ? await getCourseSessionManagementDetails(id, selectedSessionId)
+    : null
+
   const activeModules = modules.filter((module) => module.isActive)
   const averageProgress = workspace.students.length
     ? Math.round(workspace.students.reduce((sum, student) => sum + student.progressPercent, 0) / workspace.students.length)
@@ -159,7 +177,8 @@ export default async function CourseDetailsPage({
               courseId={course.id}
               weekStart={weeklySessions.weekStart}
               sessions={weeklySessions.sessions}
-              selectedSessionId={feedback.session}
+              selectedSessionId={selectedSessionId}
+              managementDetails={managementDetails}
             />
           ) : null}
 

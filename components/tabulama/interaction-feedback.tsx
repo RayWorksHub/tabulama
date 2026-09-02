@@ -38,6 +38,7 @@ function haptic(pattern: number | number[]): void {
 
 function isTrackableField(target: EventTarget | null): target is HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement {
   if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement)) return false
+  if (!target.name || target.dataset.feedbackIgnore === 'true') return false
   if (target instanceof HTMLInputElement && ['hidden', 'submit', 'button', 'reset'].includes(target.type)) return false
   return true
 }
@@ -91,8 +92,8 @@ export function InteractionFeedback() {
       form.dataset.formState = 'dirty'
       show({
         kind: 'dirty',
-        message: 'Nem mentett módosítások',
-        detail: 'A változtatások mentésre várnak.',
+        message: form.dataset.dirtyMessage || 'Nem mentett módosítások',
+        detail: form.dataset.dirtyDetail || 'A változtatások mentésre várnak.',
       })
     }
 
@@ -105,8 +106,12 @@ export function InteractionFeedback() {
         submitter.dataset.pending = 'true'
         submitter.setAttribute('aria-busy', 'true')
       }
-      show({ kind: 'saving', message: 'Mentés folyamatban…', detail: 'Kérlek, várj egy pillanatot.' })
-      haptic(10)
+      show({
+        kind: 'saving',
+        message: submitter?.dataset.pendingMessage || form.dataset.pendingMessage || 'Mentés folyamatban…',
+        detail: submitter?.dataset.pendingDetail || form.dataset.pendingDetail || 'Kérlek, várj egy pillanatot.',
+      })
+      haptic(form.dataset.operation === 'delete' ? [12, 18, 12] : 10)
     }
 
     const onBeforeUnload = (event: BeforeUnloadEvent) => {

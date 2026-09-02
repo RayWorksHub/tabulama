@@ -5,12 +5,14 @@ import {
   weekDaysIso,
   type CourseSessionItem,
 } from '@/lib/course-session-repository'
+import type { CourseSessionManagementDetails } from '@/lib/course-session-management-repository'
 import {
   markAllSessionPresentAction,
   updateCourseSessionStatusAction,
 } from '@/app/admin/(protected)/kurzusok/session-actions'
 import { CourseSessionCreateForm } from '@/components/admin/course-session-create-form'
 import { CourseSessionAttendanceEditor } from '@/components/admin/course-session-attendance-editor'
+import { CourseSessionManagementPanel } from '@/components/admin/course-session-management-panel'
 
 const sessionStatusLabels = {
   scheduled: 'Tervezett',
@@ -38,11 +40,13 @@ export function CourseWeeklySessions({
   weekStart,
   sessions,
   selectedSessionId,
+  managementDetails,
 }: {
   courseId: string
   weekStart: string
   sessions: CourseSessionItem[]
   selectedSessionId?: string | null
+  managementDetails?: CourseSessionManagementDetails | null
 }) {
   const days = weekDaysIso(weekStart)
   const previousWeek = addDaysIso(weekStart, -7)
@@ -108,6 +112,10 @@ export function CourseWeeklySessions({
               </div>
             </div>
           </div>
+
+          {managementDetails?.sessionId === selectedSession.id ? (
+            <CourseSessionManagementPanel details={managementDetails} weekStart={weekStart} />
+          ) : null}
 
           {selectedSession.attendance.length ? (
             <CourseSessionAttendanceEditor
