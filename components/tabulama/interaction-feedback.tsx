@@ -47,6 +47,8 @@ export function InteractionFeedback() {
   const dismissTimer = useRef<number | null>(null)
 
   useEffect(() => {
+    const seenPageFeedback = new WeakSet<Element>()
+
     const clearDismissTimer = () => {
       if (dismissTimer.current !== null) window.clearTimeout(dismissTimer.current)
       dismissTimer.current = null
@@ -61,15 +63,18 @@ export function InteractionFeedback() {
     const showPageFeedback = () => {
       const error = document.querySelector<HTMLElement>('[role="alert"]')
       const success = document.querySelector<HTMLElement>('[role="status"]')
-      if (error?.innerText.trim()) {
-        show({ kind: 'error', message: error.innerText.trim(), detail: 'A módosítás nem került mentésre.' }, 6500)
+      const element = error?.innerText.trim() ? error : success?.innerText.trim() ? success : null
+      if (!element || seenPageFeedback.has(element)) return
+      seenPageFeedback.add(element)
+
+      if (element === error) {
+        show({ kind: 'error', message: error!.innerText.trim(), detail: 'A módosítás nem került mentésre.' }, 6500)
         haptic([24, 30, 24])
         return
       }
-      if (success?.innerText.trim()) {
-        show({ kind: 'success', message: success.innerText.trim(), detail: 'A változtatások elmentve.' }, 4000)
-        haptic(18)
-      }
+
+      show({ kind: 'success', message: success!.innerText.trim(), detail: 'A változtatások elmentve.' }, 4000)
+      haptic(18)
     }
 
     const onPointerDown = (event: PointerEvent) => {
