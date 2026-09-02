@@ -22,7 +22,7 @@ export const metadata: Metadata = {
     template: '%s | TabuLama',
   },
   description:
-    '12 hetes intenzív Python programozói képzés középiskolásoknak: programozói alapok, gyakorlati tudás és célzott vizsgafelkészítés egy képzésben.',
+    'Középiskolásoknak szóló programozási kurzusok, Python-alapozás, ágazati alapvizsga- és digitális kultúra érettségi felkészítés.',
   icons: {
     icon: '/tabulama/tabulama-mark.webp',
     apple: '/apple-icon.png',
@@ -32,20 +32,20 @@ export const metadata: Metadata = {
     locale: 'hu_HU',
     title: 'TabuLama Programozó Akadémia',
     description:
-      'Python programozás középiskolásoknak, gyakorlati tudással és célzott vizsgafelkészítéssel.',
+      'Programozási kurzusok és célzott vizsgafelkészítés középiskolásoknak.',
     images: [
       {
         url: '/og.png',
         width: 1200,
         height: 630,
-        alt: 'TabuLama Programozó Akadémia – Python programozás középiskolásoknak',
+        alt: 'TabuLama Programozó Akadémia – programozási kurzusok középiskolásoknak',
       },
     ],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'TabuLama Programozó Akadémia',
-    description: 'Python programozás középiskolásoknak.',
+    description: 'Programozási kurzusok középiskolásoknak.',
     images: ['/og.png'],
   },
 }

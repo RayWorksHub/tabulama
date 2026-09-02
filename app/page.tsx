@@ -2,10 +2,6 @@ import Image from 'next/image'
 import Link from 'next/link'
 import {
   ArrowRight,
-  CalendarDays,
-  Clock,
-  Users,
-  Rocket,
   Code2,
   Target,
   GraduationCap,
@@ -16,43 +12,32 @@ import { Reveal } from '@/components/tabulama/reveal'
 import { CourseCard } from '@/components/tabulama/course-card'
 import { listPublicCourses } from '@/lib/course-repository'
 
-const facts = [
-  { icon: Clock, label: 'Időtartam', value: '12 hét' },
-  {
-    icon: CalendarDays,
-    label: 'Alkalmak',
-    value: 'Heti 3 · H / Sze / P · 17:00–18:30',
-  },
-  { icon: Users, label: 'Csoportlétszám', value: '10–15 fő' },
-  { icon: Rocket, label: 'Indulás', value: '2026. augusztus 24.' },
-]
-
 const highlights = [
   {
     icon: Code2,
-    title: 'Python az alapoktól',
+    title: 'Programozási alapok',
     description:
-      'Változók, ciklusok, elágazások, listák és függvények – stabil programozói alapok gyakorlati példákon keresztül.',
+      'Változók, elágazások, ciklusok, adatszerkezetek és függvények gyakorlati feladatokban.',
   },
   {
     icon: Target,
-    title: 'Célzott vizsgafelkészítés',
+    title: 'Vizsgafelkészítés',
     description:
-      'A második szakaszban ágazati alapvizsgára vagy digitális kultúra érettségire specializálódsz.',
+      'Külön kurzusok az ágazati alapvizsga és a digitális kultúra érettségi programozási feladataira.',
   },
   {
     icon: GraduationCap,
-    title: 'Próba vizsga a végén',
+    title: 'Gyakorlás és visszajelzés',
     description:
-      'A képzést próba vizsga zárja, ahol felméred a tudásod és megtapasztalod a valódi vizsgahelyzetet.',
+      'Önálló feladatmegoldás, megoldáselemzés és követhető előrehaladás a kurzus céljához igazítva.',
   },
 ]
 
 const forWhom = [
-  'Középiskolásoknak, akik szeretnék megérteni a programozást',
+  'Középiskolásoknak, akik az alapoktól tanulnának programozni',
   'Ágazati alapvizsgára készülőknek',
   'Digitális kultúra érettségire készülőknek',
-  'Kezdőknek, akik nulláról indulnának',
+  'Azoknak, akik célzott gyakorlást és tanári visszajelzést szeretnének',
 ]
 
 export const dynamic = 'force-dynamic'
@@ -76,32 +61,32 @@ export default async function TabuLamaHomePage() {
         <div className="relative mx-auto grid max-w-6xl items-center gap-10 px-4 py-16 sm:px-6 lg:grid-cols-2 lg:py-24 lg:px-8">
           <div>
             <span className="inline-block rounded-full border border-brand/40 bg-brand/10 px-4 py-1.5 text-sm font-semibold text-brand">
-              Python programozás középiskolásoknak
+              Programozási kurzusok középiskolásoknak
             </span>
             <h1 className="mt-5 text-balance font-heading text-4xl font-extrabold tracking-tight sm:text-5xl">
-              Tanulj meg programozni – érthetően, lépésről lépésre.
+              Programozási alapok és vizsgafelkészítés, érthetően.
             </h1>
             <p className="mt-5 max-w-xl text-pretty text-lg leading-relaxed text-navy-foreground/75">
-              A TabuLama Programozó Akadémia 12 hetes intenzív képzése az
-              alapoktól épít fel: programozói gondolkodás, gyakorlati tudás és
-              célzott vizsgafelkészítés egy csomagban.
+              A TabuLama programozási alapozó kurzusokat, Python-képzéseket,
+              valamint ágazati alapvizsga- és érettségi felkészítést szervez
+              középiskolásoknak.
             </p>
             <div className="mt-8 flex flex-col gap-4 sm:flex-row">
               <Link
-                href="/jelentkezes"
+                href="/kurzusok"
                 className={buttonVariants({ size: 'lg' })}
               >
-                Jelentkezem
+                Kurzusok megtekintése
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
               <Link
-                href="/kurzusok"
+                href="#modszertan"
                 className={buttonVariants({
                   variant: 'outline',
                   size: 'lg',
                 })}
               >
-                Tanfolyam részletei
+                Hogyan tanítunk?
               </Link>
             </div>
           </div>
@@ -121,38 +106,15 @@ export default async function TabuLamaHomePage() {
         </div>
       </section>
 
-      {/* Facts */}
-      <section className="mx-auto max-w-6xl px-4 py-14 sm:px-6 lg:px-8">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {facts.map((f, i) => (
-            <Reveal
-              key={f.label}
-              delay={i * 80}
-              className="rounded-2xl border border-border bg-card p-6"
-            >
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-accent text-primary">
-                <f.icon className="h-5 w-5" />
-              </div>
-              <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {f.label}
-              </p>
-              <p className="mt-1 font-heading text-base font-bold text-foreground">
-                {f.value}
-              </p>
-            </Reveal>
-          ))}
-        </div>
-      </section>
-
       {/* Highlights */}
-      <section className="mx-auto max-w-6xl px-4 pb-4 sm:px-6 lg:px-8">
+      <section id="modszertan" className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:px-8 lg:py-20">
         <Reveal className="mx-auto max-w-2xl text-center">
           <h2 className="font-heading text-3xl font-extrabold tracking-tight text-foreground">
-            Mit viszel haza a képzésről?
+            Miben segít a TabuLama?
           </h2>
           <p className="mt-3 text-muted-foreground">
-            Nem magolás, hanem valódi megértés – hogy önállóan is meg tudd oldani
-            a feladatokat.
+            A kurzusok célja az önálló feladatmegoldás és a vizsgán is
+            használható programozási tudás.
           </p>
         </Reveal>
         <div className="mt-10 grid gap-6 md:grid-cols-3">
@@ -177,21 +139,21 @@ export default async function TabuLamaHomePage() {
       </section>
 
       {/* For whom */}
-      <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:px-8">
+      <section className="mx-auto max-w-6xl px-4 pb-16 sm:px-6 lg:px-8 lg:pb-20">
         <div className="grid items-center gap-10 rounded-3xl border border-border bg-secondary/50 p-8 sm:p-12 lg:grid-cols-2">
           <Reveal>
             <h2 className="font-heading text-3xl font-extrabold tracking-tight text-foreground">
-              Kinek szól a képzés?
+              Kinek szólnak a kurzusok?
             </h2>
             <p className="mt-3 text-muted-foreground">
-              A kurzus felépítése a középiskolás korosztály igényeire szabott,
-              legyen szó teljesen kezdőkről vagy vizsgára készülőkről.
+              A meghirdetett képzések között alapozó és vizsgára felkészítő
+              kurzusok is helyet kapnak.
             </p>
             <Link
               href="/kurzusok"
               className={`${buttonVariants({ size: 'lg' })} mt-6`}
             >
-              Nézd meg a tematikát
+              Aktuális kurzusok
               <ArrowRight className="ml-2 h-4 w-4" />
             </Link>
           </Reveal>
@@ -225,17 +187,17 @@ export default async function TabuLamaHomePage() {
       <section className="mx-auto max-w-6xl px-4 pb-20 sm:px-6 lg:px-8">
         <Reveal className="overflow-hidden rounded-3xl bg-navy px-6 py-14 text-center text-navy-foreground sm:px-12">
           <h2 className="mx-auto max-w-2xl text-balance font-heading text-3xl font-extrabold tracking-tight">
-            Készen állsz, hogy elkezdd a programozást?
+            Válassz az aktuális kurzusok közül
           </h2>
           <p className="mx-auto mt-4 max-w-xl text-navy-foreground/75">
-            A helyek korlátozottak – maximum 15 fős csoportban dolgozunk, hogy
-            mindenki személyes figyelmet kapjon.
+            Az időpont, a tematika, az ár és a férőhely minden kurzusnál külön
+            látható.
           </p>
           <Link
-            href="/jelentkezes"
+            href="/kurzusok"
             className={`${buttonVariants({ size: 'lg' })} mt-8`}
           >
-            Jelentkezem most
+            Kurzusok megtekintése
             <ArrowRight className="ml-2 h-4 w-4" />
           </Link>
         </Reveal>

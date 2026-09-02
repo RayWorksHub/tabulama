@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Mail, Clock, Users } from 'lucide-react'
+import { Code2, GraduationCap, Mail } from 'lucide-react'
 import { TabuLamaLogo } from '@/components/tabulama/tabulama-logo'
 import { provider } from '@/lib/tabulama-config'
 
@@ -17,8 +17,8 @@ export function TabuLamaFooter() {
           <div>
             <TabuLamaLogo />
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-muted-foreground">
-              Python programozás középiskolásoknak – programozói alapok,
-              gyakorlati tudás és célzott vizsgafelkészítés egy képzésben.
+              Középiskolásoknak szóló programozási kurzusok: alapozás, Python
+              és célzott vizsgafelkészítés.
             </p>
           </div>
 
@@ -42,16 +42,16 @@ export function TabuLamaFooter() {
 
           <div>
             <h3 className="font-heading text-sm font-bold uppercase tracking-wide text-foreground">
-              Képzés
+              Akadémia
             </h3>
             <ul className="mt-4 space-y-3 text-sm text-muted-foreground">
               <li className="flex items-center gap-2">
-                <Clock className="h-4 w-4 shrink-0 text-primary" />
-                12 hét · heti 3 alkalom
+                <Code2 className="h-4 w-4 shrink-0 text-primary" />
+                Programozási alapozó kurzusok
               </li>
               <li className="flex items-center gap-2">
-                <Users className="h-4 w-4 shrink-0 text-primary" />
-                10–15 fős kiscsoport
+                <GraduationCap className="h-4 w-4 shrink-0 text-primary" />
+                Vizsgafelkészítő képzések
               </li>
               <li className="flex items-center gap-2">
                 <Mail className="h-4 w-4 shrink-0 text-primary" />
